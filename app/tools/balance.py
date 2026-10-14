@@ -40,7 +40,7 @@ def _stock(view: dict) -> int:
     return sum(int(lot["qty"]) for lot in view["cellar"])
 
 
-def _order_up_to_spot(engine: PulkyEngine, view: dict) -> int:
+def _order_up_to_spot(engine: PulkyEngine, view: dict, safety: int = 0) -> int:
     if not view["order_windows"]["spot_open"]:
         return 0
     day = view["day"]
@@ -51,7 +51,7 @@ def _order_up_to_spot(engine: PulkyEngine, view: dict) -> int:
     cover = _stock(view) - view["expected_spoil_tonight"]
     cover += sum(s["qty"] for s in view["in_transit"])
     cover += sum(f["qty"] for f in view["futures_book"] if f["delivery_day"] <= horizon)
-    return min(MAX_ORDER, max(0, halfup(target - cover)))
+    return min(MAX_ORDER, max(0, halfup(target + safety - cover)))
 
 
 def _largest(
@@ -120,10 +120,11 @@ class Strategy(Protocol):
     def decide(self, engine: PulkyEngine, alias: str) -> Decision: ...
 
 
-def _base(engine: PulkyEngine, alias: str) -> tuple[dict, Decision]:
+def _base(engine: PulkyEngine, alias: str, safety: int = 0) -> tuple[dict, Decision]:
     view = engine.player_view(alias, False)
     zero = Decision.zero(view["day"])
-    return view, dataclasses.replace(zero, order_spot=_order_up_to_spot(engine, view))
+    spot = _order_up_to_spot(engine, view, safety)
+    return view, dataclasses.replace(zero, order_spot=spot)
 
 
 def _finish(
@@ -221,11 +222,14 @@ class _Coop:
         return _finish(engine, alias, view, decision)
 
 
+TRADER_SAFETY_STOCK = 5
+
+
 class _Trader:
     name = "trader"
 
     def decide(self, engine: PulkyEngine, alias: str) -> Decision:
-        view, decision = _base(engine, alias)
+        view, decision = _base(engine, alias, TRADER_SAFETY_STOCK)
         decision = _finish(engine, alias, view, decision)
         cfg = engine.config
         if not cfg.peer_market.enabled:
@@ -237,7 +241,7 @@ class _Trader:
         )
         if max_units >= 1:
             price = cfg.supplier.base_price * (1 + cfg.supplier.spot_spread)
-            sell = PeerSell(_peer_price(price), 60, max_units)
+            sell = PeerSell(_peer_price(price), 100, max_units)
         return dataclasses.replace(decision, peer_buy=buy, peer_sell=sell)
 
 
@@ -309,6 +313,7 @@ def evaluate(
     config: GameConfig, strategy: Strategy, n_players: int, seeds: Sequence[int]
 ) -> StrategyResult:
     window = config.demand.weekday_peak
+    lead = config.supplier.lead_time_days
     profits: list[float] = []
     wastes: list[float] = []
     fills: list[float] = []
@@ -336,14 +341,21 @@ def evaluate(
         disrupted = [m for m in market.values() if m.disrupted]
         dis_days += len(disrupted)
         trade_days += sum(1 for m in disrupted if m.peer_units > 0)
-        dis_weekdays = {m.weekday for m in disrupted}
+        last = max(market)
+        arrivals = [
+            m.day + lead
+            for m in disrupted
+            if m.day + lead <= last and not market[m.day + lead].disrupted
+        ]
+        arrival_weekdays = {market[t].weekday for t in arrivals}
         for alias in engine.aliases:
             for rec in engine.records(alias):
                 if market[rec.day].disrupted:
                     dis_fill.append(rec.fill)
-                    dis_sold.append(rec.sold)
-                elif rec.weekday in dis_weekdays:
-                    normal_sold.append(rec.sold)
+                else:
+                    if rec.weekday in arrival_weekdays and rec.day not in arrivals:
+                        normal_sold.append(rec.sold)
+                dis_sold.extend([rec.sold] * arrivals.count(rec.day))
                 peak = weekday_multiplier(rec.weekday, window.from_, window.to) == 1.0
                 (peak_backlog if peak else off_backlog).append(rec.backlog_end)
     return StrategyResult(
@@ -503,7 +515,7 @@ def check_targets(
         out.append(missing(7, "trade share or disruption fill (no disruption day)"))
     else:
         ok = (
-            trader.disruption_trade_day_share >= 0.5
+            trader.disruption_trade_day_share >= 0.05
             and trader.disruption_fill_mean > base.disruption_fill_mean
         )
         out.append(

@@ -156,8 +156,18 @@ def test_trader_day_one_example() -> None:
     e1 = start()
     d = STRATEGIES["trader"].decide(e1, "P1")
     assert d.peer_buy == PeerBuy(30.0, 30)
-    assert d.peer_sell == PeerSell(15.0, 60, 14)
-    assert d.order_spot == STRATEGIES["order_up_to"].decide(e1, "P1").order_spot
+    assert d.peer_sell == PeerSell(15.0, 100, 24)  # 12 x 1.25; 30 - 6
+    view = e1.player_view("P1")
+    target = (
+        own_demand(e1, "P1", 1) + own_demand(e1, "P1", 2) + view["backlog"]
+    )  # order_up_to's target for lead time 1
+    cover = (
+        sum(c["qty"] for c in view["cellar"])
+        - view["expected_spoil_tonight"]
+        + sum(v["qty"] for v in view["in_transit"])
+        + sum(f["qty"] for f in view["futures_book"] if f["delivery_day"] <= 2)
+    )
+    assert d.order_spot == max(0, halfup(target + 5 - cover))
 
 
 def test_trader_with_peer_market_off_sends_no_limits() -> None:
@@ -190,7 +200,7 @@ def test_evaluate_and_play_game_are_deterministic() -> None:
 
 
 def test_order_up_to_day_one_is_covered_by_initial_stock() -> None:
-    # target = own(1) + own(2) = 25*4*(0.25+0.5)*0.25 = 18.75 < stock 20
+    # target = own(1) + own(2) = 25*4*(0.25+0.5)*0.25 = 18.75 < stock 30
     e = start()
     assert STRATEGIES["order_up_to"].decide(e, "P1").order_spot == 0
 
@@ -354,7 +364,39 @@ def test_trader_sell_offer_is_none_when_stock_does_not_exceed_demand() -> None:
         assert d.peer_sell is None, stock
         assert d.peer_buy == PeerBuy(30.0, 30)
     e = start(make_config(**{"stock.initial_stock": 7}))
-    assert STRATEGIES["trader"].decide(e, "P1").peer_sell == PeerSell(15.0, 60, 1)
+    assert STRATEGIES["trader"].decide(e, "P1").peer_sell == PeerSell(15.0, 100, 1)
+
+
+def test_trader_keeps_a_five_unit_safety_stock() -> None:
+    # Failure mode: a trader that drops its safety stock orders exactly what
+    # order_up_to orders, five units short of target + 5.
+    for stock in (0, 20):
+        e = start(make_config(**{"stock.initial_stock": stock}))
+        target = own_demand(e, "P1", 1) + own_demand(e, "P1", 2)
+        cover = stock - e.player_view("P1")["expected_spoil_tonight"]
+        expected = max(0, halfup(target + 5 - cover))
+        assert expected > 0
+        d = STRATEGIES["trader"].decide(e, "P1")
+        assert d.order_spot == expected, stock
+        base = STRATEGIES["order_up_to"].decide(e, "P1").order_spot
+        assert base == max(0, halfup(target - cover))
+        assert d.order_spot > base, stock
+
+
+def test_trader_safety_stock_respects_closed_spot_and_cash() -> None:
+    e = start(make_config(**{"stock.initial_stock": 0}))
+    advance_zero_days(e, 13)
+    assert STRATEGIES["trader"].decide(e, "P1").order_spot == 0
+    cfg = make_config(**{"starting_cash": 100.0, "stock.initial_stock": 0})
+    e = start(cfg)
+    d = STRATEGIES["trader"].decide(e, "P1")
+    assert d.order_spot > 0 and e.outlay("P1", d) <= 100.0
+
+
+def test_trader_sell_offer_accepts_any_quality() -> None:
+    e = start()
+    d = STRATEGIES["trader"].decide(e, "P1")
+    assert d.peer_sell is not None and d.peer_sell.max_quality == 100
 
 
 def test_trader_prices_stay_in_peer_bounds() -> None:
@@ -520,41 +562,106 @@ def test_disruption_metrics_none_without_disruptions() -> None:
     assert res.disruption_trade_day_share is None
 
 
+def _expected_metrics(
+    cfg: GameConfig,
+    games: Sequence[PulkyEngine],
+    *,
+    shift: bool = True,
+    baseline_excludes_arrivals: bool = True,
+    exclude: bool = True,
+) -> dict[str, Any]:
+    """Independent restatement of plan 12 section 3.4.
+
+    ``shift=False`` measures on the disrupted day d itself (the old rule);
+    ``exclude=False`` keeps d + L past the last day or itself disrupted.
+    """
+    lead = cfg.supplier.lead_time_days if shift else 0
+    lo, hi = cfg.demand.weekday_peak.from_, cfg.demand.weekday_peak.to
+    fills: list[float] = []
+    sold: list[float] = []
+    normal: list[float] = []
+    peak_bl: list[float] = []
+    off_bl: list[float] = []
+    dis_days = trade_days = 0
+    for g in games:
+        market = {m.day: m for m in g.market_history()}
+        last = max(market)
+        disrupted = [d for d, m in market.items() if m.disrupted]
+        for d in disrupted:
+            dis_days += 1
+            trade_days += market[d].peer_units > 0
+        measured = [
+            d + lead
+            for d in disrupted
+            if not exclude or (d + lead <= last and not market[d + lead].disrupted)
+        ]
+        weekdays = {market[t].weekday for t in measured if t in market}
+        for alias in g.aliases:
+            for r in g.records(alias):
+                if market[r.day].disrupted:
+                    fills.append(r.fill)
+                if r.day in measured:
+                    sold.extend([r.sold] * measured.count(r.day))
+                if (
+                    not market[r.day].disrupted
+                    and (r.day not in measured or not baseline_excludes_arrivals)
+                    and r.weekday in weekdays
+                ):
+                    normal.append(r.sold)
+                is_peak = weekday_multiplier(r.weekday, lo, hi) == 1.0
+                (peak_bl if is_peak else off_bl).append(r.backlog_end)
+    return {
+        "fills": fills,
+        "sold": sold,
+        "normal": normal,
+        "peak_bl": peak_bl,
+        "off_bl": off_bl,
+        "dis_days": dis_days,
+        "trade_days": trade_days,
+    }
+
+
 def test_disruption_metrics_match_an_independent_computation() -> None:
     cfg = make_config(**{"supplier.disruption_probability": 0.5})
     seeds = range(3)
     n = 4
     games = _games(cfg, "trader", n, seeds)
-    fills, sold, normal = [], [], []
-    dis_days = trade_days = 0
-    peak = set()
-    lo, hi = cfg.demand.weekday_peak.from_, cfg.demand.weekday_peak.to
-    peak_bl, off_bl = [], []
-    for g in games:
-        market = {m.day: m for m in g.market_history()}
-        dis_weekdays = {m.weekday for m in market.values() if m.disrupted}
-        for m in market.values():
-            if m.disrupted:
-                dis_days += 1
-                trade_days += m.peer_units > 0
-        for alias in g.aliases:
-            for r in g.records(alias):
-                if market[r.day].disrupted:
-                    fills.append(r.fill)
-                    sold.append(r.sold)
-                elif r.weekday in dis_weekdays:
-                    normal.append(r.sold)
-                is_peak = weekday_multiplier(r.weekday, lo, hi) == 1.0
-                (peak_bl if is_peak else off_bl).append(r.backlog_end)
-    assert dis_days > 0
+    exp = _expected_metrics(cfg, games)
+    assert exp["dis_days"] > 0 and exp["sold"]
     res = evaluate(cfg, STRATEGIES["trader"], n, seeds)
-    assert res.disruption_fill_mean == pytest.approx(statistics.fmean(fills))
-    assert res.disruption_sold_mean == pytest.approx(statistics.fmean(sold))
-    assert res.disruption_trade_day_share == pytest.approx(trade_days / dis_days)
-    assert res.normal_sold_mean == pytest.approx(statistics.fmean(normal))
-    assert res.peak_backlog_mean == pytest.approx(statistics.fmean(peak_bl))
-    assert res.offpeak_backlog_mean == pytest.approx(statistics.fmean(off_bl))
-    del peak
+    assert res.disruption_fill_mean == pytest.approx(statistics.fmean(exp["fills"]))
+    assert res.disruption_sold_mean == pytest.approx(statistics.fmean(exp["sold"]))
+    assert res.disruption_trade_day_share == pytest.approx(
+        exp["trade_days"] / exp["dis_days"]
+    )
+    assert res.normal_sold_mean == pytest.approx(statistics.fmean(exp["normal"]))
+    assert res.peak_backlog_mean == pytest.approx(statistics.fmean(exp["peak_bl"]))
+    assert res.offpeak_backlog_mean == pytest.approx(statistics.fmean(exp["off_bl"]))
+
+
+def test_disruption_sold_is_measured_on_the_arrival_day_not_the_cut_day() -> None:
+    # Failure mode: measuring on the disrupted day d instead of d + L. The two
+    # rules give different means for order_up_to here, and evaluate must follow
+    # the d + L one (a shipment cut on day d would have arrived on d + L).
+    cfg = make_config(**{"supplier.disruption_probability": 0.4})
+    seeds = range(6)
+    games = _games(cfg, "order_up_to", 4, seeds)
+    arrival = _expected_metrics(cfg, games)
+    cut_day = _expected_metrics(cfg, games, shift=False, exclude=False)
+    unfiltered = _expected_metrics(cfg, games, exclude=False)
+    a = statistics.fmean(arrival["sold"])
+    assert a != pytest.approx(statistics.fmean(cut_day["sold"]), abs=1e-6)
+    assert a != pytest.approx(statistics.fmean(unfiltered["sold"]), abs=1e-6)
+    res = evaluate(cfg, STRATEGIES["order_up_to"], 4, seeds)
+    assert res.disruption_sold_mean == pytest.approx(a)
+    assert res.normal_sold_mean == pytest.approx(statistics.fmean(arrival["normal"]))
+    # the baseline excludes the measured d + L days themselves
+    with_arrivals = _expected_metrics(cfg, games, baseline_excludes_arrivals=False)
+    assert statistics.fmean(with_arrivals["normal"]) != pytest.approx(
+        statistics.fmean(arrival["normal"]), abs=1e-6
+    )
+    # the fill mean stays on the disrupted days d themselves
+    assert res.disruption_fill_mean == pytest.approx(statistics.fmean(arrival["fills"]))
 
 
 # ---------------------------------------------------------------- check_targets
@@ -651,7 +758,7 @@ def _mutate(
         (("order_up_to", False), {"disruption_sold_mean": 18.0}, 6),
         (("naive", False), {"peak_backlog_mean": 1.0}, 6),
         # 7
-        (("trader", False), {"disruption_trade_day_share": 0.49}, 7),
+        (("trader", False), {"disruption_trade_day_share": 0.04}, 7),
         (("trader", False), {"disruption_fill_mean": 0.5}, 7),
     ],
 )
@@ -686,6 +793,15 @@ def test_inclusive_bounds(
         assert run(r)[1].passed is False
     else:
         assert run(_mutate(key, **over))[number].passed is True
+
+
+def test_target_seven_trade_share_threshold_is_five_percent() -> None:
+    r = _mutate(("trader", False), disruption_trade_day_share=0.05)
+    assert run(r)[7].passed is True
+    r = _mutate(("trader", False), disruption_trade_day_share=0.049)
+    assert run(r)[7].passed is False
+    r = _mutate(("trader", False), disruption_trade_day_share=0.06)
+    assert run(r)[7].passed is True
 
 
 def test_target_four_shared_variant_and_missing_inputs() -> None:
