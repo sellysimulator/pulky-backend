@@ -158,7 +158,7 @@ def test_accepted_decision_is_stored_and_used_at_resolution():
     r = out.records["P1"]
     assert (r.order_spot, r.order_futures, r.incoterm) == (7, 3, CIP)
     assert r.cooperate is True and r.conserve_lots == ()
-    assert r.outlay == round_cents(12 * 7 + 12 * 3 + (1.0 + 0.4) * 7)
+    assert r.outlay == round_cents(12 * 7 + 12 * 3 + (1.0 + 0.55) * 7)
 
 
 def test_second_submission_is_refused_and_changes_nothing():
@@ -431,9 +431,9 @@ def test_outlay_formula_terms():
     assert spot == 12.0
     # spot x price + futures x base + (transport + fee) x spot + conservation
     assert e.outlay("P1", D(1, 10, 5, CIP, ("L0",))) == pytest.approx(
-        12 * 10 + 12 * 5 + (1.0 + 0.4) * 10 + 1.0 * 20
+        12 * 10 + 12 * 5 + (1.0 + 0.55) * 10 + 1.0 * 30
     )
-    assert e.outlay("P1", D(1, 10, 0, DDP)) == pytest.approx(12 * 10 + 1.99 * 10)
+    assert e.outlay("P1", D(1, 10, 0, DDP)) == pytest.approx(12 * 10 + 2.39 * 10)
     assert e.outlay("P1", D(1, 0, 8, DDP)) == pytest.approx(96.0)
     assert e.outlay("P1", Decision.zero(1)) == 0.0
 
@@ -455,9 +455,9 @@ def test_outlay_charges_fee_on_futures_due_but_never_transport():
     assert e.player_view("P1")["futures_book"][0]["ships_day"] == 3
     assert e.outlay("P1", D(3, 0, 0, EXW)) == 0.0
     # fee x due only: the 10 units' transport was committed at purchase
-    assert e.outlay("P1", D(3, 0, 0, CIP)) == pytest.approx(0.4 * 10)
+    assert e.outlay("P1", D(3, 0, 0, CIP)) == pytest.approx(0.55 * 10)
     assert e.outlay("P1", D(3, 5, 0, DDP)) == pytest.approx(
-        (12 + 1.0 + 0.99) * 5 + 0.99 * 10
+        (12 + 1.0 + 1.39) * 5 + 1.39 * 10
     )
     assert e.outlay("P2", D(3, 0, 0, CIP)) == 0.0
 
@@ -509,8 +509,8 @@ def test_negative_cash_allows_only_the_zero_outlay_decision():
     assert out.records["P1"].cost_transport == 30.0
 
 
-def test_outlay_mock_of_904_dollars():
-    # 40 x $13.40 + 25 x $12.00 + 40 x ($1.00 + $0.40) + $12 conservation = $904
+def test_outlay_mock_of_910_dollars():
+    # 40 x $13.40 + 25 x $12.00 + 40 x ($1.00 + $0.55) + $12 conservation = $910
     config = cfg(
         max_players=2,
         supplier__capacity_sd_per_player=0,
@@ -521,6 +521,6 @@ def test_outlay_mock_of_904_dollars():
     e = start(config, seed=730)
     assert e.brief()["supplier"]["spot_price"] == 13.4
     decision = D(1, 40, 25, CIP, ("L0",))
-    assert e.outlay("P1", decision) == pytest.approx(904.0)
+    assert e.outlay("P1", decision) == pytest.approx(910.0)
     e.submit("P1", decision)
     assert e.has_submitted("P1")

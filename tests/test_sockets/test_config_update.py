@@ -160,13 +160,13 @@ async def test_invalid_patch_reports_the_field_and_leaves_the_config(
     code, secret = await hosted(world)
     before = copy.deepcopy(await world.room(code))
     start = world.mark()
-    await config_update("host-1", update(code, secret, {"stock": {"max_days": 1}}))
+    await config_update("host-1", update(code, secret, {"stock": {"fresh_days": 3}}))
 
     assert world.sent("host-1", since=start) == [
         {
             "code": "INVALID_CONFIG",
             "field": "stock.max_days",
-            "message": "Must be more than the fresh days (1).",
+            "message": "Must be more than the fresh days (3).",
         }
     ]
     assert world.sent(code, since=start) == []

@@ -84,10 +84,10 @@ SPEC_DEFAULTS: dict[str, Any] = {
     },
     "futures": {"horizon_days": 7},
     "stock": {
-        "fresh_days": 1,
-        "max_days": 4,
+        "fresh_days": 0,
+        "max_days": 3,
         "holding_cost": 0.2,
-        "initial_stock": 20,
+        "initial_stock": 30,
         "salvage_value": 2,
         "conservation_extra_fresh_days": 2,
         "conservation_cost_per_unit": 1.0,
@@ -96,14 +96,14 @@ SPEC_DEFAULTS: dict[str, Any] = {
     "transport": {
         "unit_cost": 1.0,
         "shared": False,
-        "failure_probability": 0.10,
+        "failure_probability": 0.14,
         "loss_fraction": 0.30,
     },
     "insurance": {
         "tiers": {
-            "cip": {"enabled": True, "fee": 0.40},
-            "dap": {"enabled": True, "fee": 0.40},
-            "ddp": {"enabled": True, "fee": 0.99},
+            "cip": {"enabled": True, "fee": 0.55},
+            "dap": {"enabled": True, "fee": 0.55},
+            "ddp": {"enabled": True, "fee": 1.39},
         },
         "target_margin": 0.10,
         "reference_shipment": 20,
@@ -486,9 +486,9 @@ def test_extra_keys_are_forbidden_in_from_dict() -> None:
 
 EXAMPLE_ERRORS: list[tuple[dict, str, str]] = [
     (
-        {"stock": {"max_days": 1}},
+        {"stock": {"fresh_days": 3}},
         "stock.max_days",
-        "Must be more than the fresh days (1).",
+        "Must be more than the fresh days (3).",
     ),
     (
         {"demand": {"weekday_peak": {"from": "sun"}}},
@@ -606,9 +606,9 @@ def test_worked_example_shared_transport_warnings() -> None:
     result = validate_config({"transport": {"shared": True}})
     assert result.errors == []
     assert issue_pairs(result.warnings) == [
-        ("insurance.tiers.cip.fee", "Far from break-even (ratio 6.67)."),
-        ("insurance.tiers.dap.fee", "Far from break-even (ratio 6.67)."),
-        ("insurance.tiers.ddp.fee", "Far from break-even (ratio 6.60)."),
+        ("insurance.tiers.cip.fee", "Far from break-even (ratio 6.55)."),
+        ("insurance.tiers.dap.fee", "Far from break-even (ratio 6.55)."),
+        ("insurance.tiers.ddp.fee", "Far from break-even (ratio 6.62)."),
     ]
     assert result.config is not None
     assert result.config.transport.shared is True
@@ -951,7 +951,7 @@ def test_partial_patch_does_not_reset_siblings_nested_deeper() -> None:
     tiers = new.to_dict()["insurance"]["tiers"]
     assert tiers["cip"] == {"enabled": False, "fee": 0.5}
     assert tiers["dap"]["enabled"] is False
-    assert tiers["ddp"] == {"enabled": True, "fee": 0.99}
+    assert tiers["ddp"] == {"enabled": True, "fee": 1.39}
 
 
 def test_inverted_fresh_max_range_cannot_be_stored() -> None:
@@ -1293,7 +1293,7 @@ def test_fee_warning_thresholds_and_two_decimal_ratio() -> None:
     be = {
         t: break_even_fee(
             t,
-            failure_probability=0.10,
+            failure_probability=0.14,
             loss_fraction=0.30,
             shared=False,
             n_ref=4,
@@ -1544,9 +1544,9 @@ def test_tier_terms_for_defaults() -> None:
     terms = GameConfig.default().tier_terms()
     assert list(terms) == [CIP, DAP, DDP]
     assert terms == {
-        CIP: TierTerms(enabled=True, fee=0.40),
-        DAP: TierTerms(enabled=True, fee=0.40),
-        DDP: TierTerms(enabled=True, fee=0.99),
+        CIP: TierTerms(enabled=True, fee=0.55),
+        DAP: TierTerms(enabled=True, fee=0.55),
+        DDP: TierTerms(enabled=True, fee=1.39),
     }
     assert Incoterm.EXW not in terms
 
@@ -1566,7 +1566,7 @@ def test_tier_terms_follow_the_config() -> None:
         }
     ).tier_terms()
     assert mixed[CIP] == TierTerms(enabled=True, fee=0.1)
-    assert mixed[DAP] == TierTerms(enabled=True, fee=0.40)
+    assert mixed[DAP] == TierTerms(enabled=True, fee=0.55)
     assert mixed[DDP] == TierTerms(enabled=False, fee=2.0)
 
 

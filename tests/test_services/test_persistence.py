@@ -117,7 +117,7 @@ def play_peer_game(
         elif day == 2 and peer_enabled:
             plan = {
                 "P1": Decision(
-                    2, 40, 0, Incoterm.EXW, (), False, PeerBuy(20.0, 50), None
+                    2, 40, 0, Incoterm.EXW, (), False, PeerBuy(20.0, 0), None
                 ),
                 "P2": Decision(
                     2, 0, 0, Incoterm.EXW, (), False, None, PeerSell(15.0, 100, 25)
@@ -726,7 +726,7 @@ def test_fm6_a_stored_and_reloaded_game_equals_the_engine_field_for_field(
     # the scenario really exercised every field the bug would lose
     p1, p2 = g.records["P1"], g.records["P2"]
     assert p1[0].conserve_lots == ("L0",)
-    assert p1[1].peer_buy == PeerBuy(20.0, 50) and p2[1].peer_sell is not None
+    assert p1[1].peer_buy == PeerBuy(20.0, 0) and p2[1].peer_sell is not None
     assert p1[1].peer_trades and p2[1].peer_trades
     assert any(r.refrigeration_failure for r in p1)
     assert {r.incoterm for r in p1} >= {Incoterm.CIP, Incoterm.EXW}

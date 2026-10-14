@@ -93,7 +93,8 @@ def market(e, day):
 
 
 def test_deterministic_day_worked_example():
-    e = start(quiet(2), seed=11)
+    # fresh_days 1 keeps L0 safe on night 1 (the default 0 gives it a 1/3 hazard)
+    e = start(quiet(2, stock__fresh_days=1), seed=11)
     e.submit("P1", Decision(1, 30, 0, EXW, (), False))
     assert e.outlay("P1", Decision(1, 30, 0, EXW, (), False)) == pytest.approx(390.0)
     e.submit("P2", Decision(1, 10, 0, EXW, (), False))
@@ -110,12 +111,12 @@ def test_deterministic_day_worked_example():
     assert r.cost_spot == 360.0
     assert r.cost_transport == 30.0
     assert r.cost_insurance == 0.0
-    assert r.sold == min(d["P1"], 20)
+    assert r.sold == min(d["P1"], 30)
     assert r.demand == d["P1"]
     assert r.backlog_end == d["P1"] - r.sold
     assert r.spoiled == 0
-    assert r.closing_stock == 20 - r.sold
-    assert r.opening_stock == 20 and r.cash_open == 5000
+    assert r.closing_stock == 30 - r.sold
+    assert r.opening_stock == 30 and r.cash_open == 5000
     assert r.weekday == Weekday.MON
     assert r.outlay == 390.0
     assert r.profit == round_cents(
@@ -259,7 +260,7 @@ def test_futures_timeline_paid_ships_and_arrives_on_schedule():
     assert r3.cost_futures == 0.0 and r3.refund_futures == 0.0
     assert r3.cost_spot == round_cents(spot3 * 10)
     assert r3.cost_transport == 20.0
-    assert r3.cost_insurance == round_cents(0.4 * 20)
+    assert r3.cost_insurance == round_cents(0.55 * 20)
     assert r3.futures_vs_spot == round_cents((spot3 - 12.0) * 10)
     assert e.player_view("P1")["futures_book"] == []
     assert e.player_view("P1")["in_transit"] == [
@@ -408,7 +409,7 @@ def test_transport_and_fee_are_charged_on_shipped_units_lost_ones_included():
     assert r.refrigeration_failure is True
     assert r.shipped == 30 and r.lost_transport == 9
     assert r.cost_transport == 30.0  # not 21
-    assert r.cost_insurance == 12.0  # 0.4 x 30, not 0.4 x 21
+    assert r.cost_insurance == 16.5  # 0.55 x 30, not 0.55 x 21
     assert r.cost_spot == 360.0
     assert e.player_view("P1")["in_transit"][0]["qty"] == 21
     assert e.player_view("P1")["in_transit"][0]["lost"] == 9
@@ -449,7 +450,9 @@ def test_shared_loss_counts_only_players_who_shipped(shared):
     assert got["P3"] == 0
 
 
-@pytest.mark.parametrize("tier,fee", [(EXW, 0.0), (CIP, 0.4), (DAP, 0.4), (DDP, 0.99)])
+@pytest.mark.parametrize(
+    "tier,fee", [(EXW, 0.0), (CIP, 0.55), (DAP, 0.55), (DDP, 1.39)]
+)
 def test_insurance_refund_is_credited_on_the_arrival_day_at_the_tier_value(tier, fee):
     config = quiet(
         2,
@@ -525,18 +528,20 @@ def test_units_delivered_today_are_sold_before_tonights_check():
     )
     e = start(config, seed=11)
     demand = draw_demands(11, 1, {"P1": 125.0, "P2": 125.0})
-    assert demand["P1"] >= 50 and demand["P2"] >= 20
+    assert demand["P1"] >= 60 and demand["P2"] >= 30
     out = play(e, {"P1": D(1, 30)})
     r = out.records["P1"]
-    assert r.delivered == 30 and r.opening_stock == 20
-    assert r.sold == 50  # the whole stock, delivery included, is sold first
+    assert r.delivered == 30 and r.opening_stock == 30
+    assert r.sold == 60  # the whole stock, delivery included, is sold first
     assert r.closing_stock == 0 and r.spoiled == 0
-    assert out.records["P2"].sold == 20 and out.records["P2"].spoiled == 0
+    assert out.records["P2"].sold == 30 and out.records["P2"].spoiled == 0
 
 
 def test_spoilage_uses_the_per_alias_spoil_stream_after_sales():
     config = quiet(
         2,
+        stock__fresh_days=1,
+        stock__max_days=4,
         stock__initial_stock=100,
         supplier__quality_min=100,
         demand__per_player_peak=1,
@@ -560,6 +565,8 @@ def test_spoilage_uses_the_per_alias_spoil_stream_after_sales():
 def test_a_plain_lot_follows_the_spoilage_table_and_dies_on_its_fourth_night():
     config = quiet(
         2,
+        stock__fresh_days=1,
+        stock__max_days=4,
         stock__initial_stock=100,
         supplier__quality_min=100,
         demand__per_player_peak=1,
@@ -598,7 +605,7 @@ def test_conservation_is_charged_and_applied_before_tonights_check():
     out = play(e, {"P1": D(1, conserve=("L0",))})
     r1, r2 = out.records["P1"], out.records["P2"]
     assert r1.lots_conserved == 1 and r1.conserve_lots == ("L0",)
-    assert r1.cost_conservation == 20.0
+    assert r1.cost_conservation == 30.0
     assert r1.spoiled == 0  # conserved: F = 2, so age 1 is still safe
     assert r2.lots_conserved == 0 and r2.cost_conservation == 0.0
     left = r2.opening_stock - r2.sold
@@ -609,7 +616,7 @@ def test_conservation_is_charged_and_applied_before_tonights_check():
     assert lot["conserved"] is True
     assert lot["risk_tonight"] == 0.0  # hazard(2, 2, 4) at 100%
     assert r1.profit == round_cents(
-        30 * r1.sold - 20 - 0.2 * r1.closing_stock - 1.5 * r1.backlog_end
+        30 * r1.sold - 30 - 0.2 * r1.closing_stock - 1.5 * r1.backlog_end
     )
 
 
@@ -751,6 +758,8 @@ def peer_config(**over):
         supplier__quality_min=100,
         supplier__lead_time_days=0,
         futures__horizon_days=7,
+        stock__fresh_days=1,  # the old shelf life keeps day-1 lots at 100%
+        stock__max_days=4,
         **over,
     )
 
@@ -844,10 +853,10 @@ def test_peer_day_worked_example():
 def test_units_sold_to_rivals_are_gone_before_the_sellers_own_customers():
     e, out = run_peer_day(demand__per_player_peak=500)
     demand = draw_demands(11, 1, {a: 125.0 for a in ("P1", "P2", "P3")})
-    assert min(demand.values()) >= 60
-    assert out.records["P2"].sold == 20 - 6
-    assert out.records["P3"].sold == 20 - 4
-    assert out.records["P1"].sold == 20 + 30 + 10
+    assert min(demand.values()) >= 70
+    assert out.records["P2"].sold == 30 - 6
+    assert out.records["P3"].sold == 30 - 4
+    assert out.records["P1"].sold == 30 + 30 + 10
     assert out.records["P2"].closing_stock == 0
 
 
@@ -1060,6 +1069,8 @@ def test_a_player_who_sells_and_buys_never_resells_what_it_bought_today():
     # spec 11 failure mode 15
     config = quiet(
         2,
+        stock__fresh_days=1,
+        stock__max_days=4,
         supplier__quality_min=100,
         supplier__lead_time_days=0,
         supplier__capacity_mean_per_player=3,
@@ -1127,39 +1138,39 @@ def test_spec_peer_market_example_end_to_end():
         "P1": [],
         "P2": [],
         "P3": [
-            Lot("L3", 12, 2, 12.0, 90, 1, 4, False),
-            Lot("L4", 10, 1, 12.0, 95, 1, 4, False),
-            Lot("L5", 20, 0, 12.0, 85, 1, 4, False),
+            Lot("L3", 12, 2, 12.0, 90, 0, 3, False),
+            Lot("L4", 10, 1, 12.0, 95, 0, 3, False),
+            Lot("L5", 20, 0, 12.0, 85, 0, 3, False),
         ],
         "P4": [
-            Lot("L4", 8, 1, 12.0, 88, 1, 4, False),
-            Lot("L5", 20, 0, 12.0, 82, 1, 4, False),
+            Lot("L4", 8, 1, 12.0, 88, 0, 3, False),
+            Lot("L5", 20, 0, 12.0, 82, 0, 3, False),
         ],
     }
     for alias, cellar in lots.items():
         payload["players"][alias]["cellar"] = [lot.to_payload() for lot in cellar]
     e = PulkyEngine.from_payload(payload, config)
-    assert [x["quality"] for x in e.player_view("P3")["cellar"]] == [23, 62, 85]
-    assert [x["last_day"] for x in e.player_view("P3")["cellar"]] == [6, 7, 8]
+    assert [x["quality"] for x in e.player_view("P3")["cellar"]] == [0, 28, 52]
+    assert [x["last_day"] for x in e.player_view("P3")["cellar"]] == [5, 6, 7]
     assert market(e, 4).capacity == 40
     out = play(
         e,
         {
-            "P1": D(5, 56, buy=PeerBuy(16.0, 50)),
-            "P2": D(5, 12, buy=PeerBuy(14.0, 50)),
-            "P3": D(5, sell=PeerSell(15.0, 70, 20)),
-            "P4": D(5, sell=PeerSell(13.0, 70, 30)),
+            "P1": D(5, 56, buy=PeerBuy(16.0, 20)),
+            "P2": D(5, 12, buy=PeerBuy(14.0, 20)),
+            "P3": D(5, sell=PeerSell(15.0, 40, 20)),
+            "P4": D(5, sell=PeerSell(13.0, 40, 30)),
         },
     )
     r1, r2, r3, r4 = (out.records[a] for a in ("P1", "P2", "P3", "P4"))
     assert (r1.shortfall_spot, r2.shortfall_spot) == (16, 12)
     assert [
         (t.counterparty, t.lot_id, t.qty, t.quality, t.price) for t in r1.peer_trades
-    ] == [("P3", "B5-1", 10, 62, 15.0), ("P4", "B5-2", 6, 55, 13.0)]
+    ] == [("P3", "B5-1", 10, 28, 15.0), ("P4", "B5-2", 6, 21, 13.0)]
     assert r1.cost_peer == 228.0 and r1.peer_bought == 16
     assert [
         (t.counterparty, t.lot_id, t.qty, t.quality, t.price) for t in r2.peer_trades
-    ] == [("P4", "B5-1", 2, 55, 13.0)]
+    ] == [("P4", "B5-1", 2, 21, 13.0)]
     assert r2.cost_peer == 26.0 and r2.peer_bought == 2
     assert (r3.peer_sold, r3.revenue_peer) == (10, 150.0)
     assert (r4.peer_sold, r4.revenue_peer) == (8, 104.0)
