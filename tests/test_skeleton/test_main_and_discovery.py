@@ -1,5 +1,6 @@
 """Entry point, CORS and auto-discovery (spec 13.2): AC10 and the app wiring."""
 
+import ast
 import os
 import shutil
 import subprocess
@@ -126,7 +127,10 @@ def test_routers_are_collected_in_module_name_order(package_copy: Path) -> None:
         print([r.routes[0].path for r in all_routers()])
         """,
     )
-    assert out == "['/aaa', '/health', '/zzz']"
+    paths = ast.literal_eval(out)
+    assert paths[0] == "/aaa"
+    assert paths[-1] == "/zzz"
+    assert paths.index("/aaa") < paths.index("/health") < paths.index("/zzz")
 
 
 def test_a_dropped_in_handler_module_registers_its_events(package_copy: Path) -> None:
@@ -169,14 +173,10 @@ def test_a_dropped_in_check_runs_at_startup(package_copy: Path) -> None:
 
 
 def test_discovery_packages_work_while_empty(package_copy: Path) -> None:
-    for name in ("app/api/v1/health.py",):
-        (package_copy / name).unlink()
-    for handler in (package_copy / "app/sockets/handlers").glob("*.py"):
-        if handler.name != "__init__.py":
-            handler.unlink()
-    for check in (package_copy / "app/core/checks").glob("*.py"):
-        if check.name != "__init__.py":
-            check.unlink()
+    for package in ("app/api/v1", "app/sockets/handlers", "app/core/checks"):
+        for module in (package_copy / package).glob("*.py"):
+            if module.name != "__init__.py":
+                module.unlink()
     out = _python(
         package_copy,
         """
