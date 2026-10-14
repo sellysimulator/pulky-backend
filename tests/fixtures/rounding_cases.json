@@ -1,0 +1,73 @@
+{
+  "_comment": "Shared money-rounding cases for round_cents (spec §8.1). Copied unchanged to Pulky_Backend/tests/fixtures/ (section 02) and Pulky_Frontend/src/__tests__/fixtures/ (section 21); both sides must pass every case.",
+  "round_cents": [
+    {
+      "value": 0.125,
+      "expected": 0.13
+    },
+    {
+      "value": 0.135,
+      "expected": 0.14
+    },
+    {
+      "value": 0.145,
+      "expected": 0.15
+    },
+    {
+      "value": 1.005,
+      "expected": 1.01
+    },
+    {
+      "value": 2.675,
+      "expected": 2.68
+    },
+    {
+      "value": 1.255,
+      "expected": 1.26
+    },
+    {
+      "value": 0.124999,
+      "expected": 0.12
+    },
+    {
+      "value": 0.0049,
+      "expected": 0.0
+    },
+    {
+      "value": 0.005,
+      "expected": 0.01
+    },
+    {
+      "value": -0.125,
+      "expected": -0.13
+    },
+    {
+      "value": -2.675,
+      "expected": -2.68
+    },
+    {
+      "value": -0.004,
+      "expected": 0.0
+    },
+    {
+      "value": 0.0,
+      "expected": 0.0
+    },
+    {
+      "value": 12345.675,
+      "expected": 12345.68
+    },
+    {
+      "value": 999999.995,
+      "expected": 1000000.0
+    },
+    {
+      "value": 33.25,
+      "expected": 33.25
+    },
+    {
+      "value": 0.30000000000000004,
+      "expected": 0.3
+    }
+  ]
+}
