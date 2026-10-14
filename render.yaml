@@ -1,0 +1,36 @@
+# Render Blueprint for the Pulky backend (docs/spec/13-deploy.md section 13.13).
+# One instance only: live state is in process memory (section 13.3).
+services:
+  - type: web
+    name: pulky-backend
+    runtime: docker
+    healthCheckPath: /api/v1/health
+    autoDeployTrigger: checksPass
+    preDeployCommand: alembic upgrade head
+    numInstances: 1
+    envVars:
+      - key: REDIS_ENABLED
+        value: "false"
+      - key: DB_REQUIRE_SSL
+        value: "true"
+      - key: DEBUG
+        value: "false"
+      - key: CORS_ORIGINS
+        value: '["https://pulkysim.web.app"]'
+      # Set in the Render dashboard, never here.
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_DATABASE
+        sync: false
+      - key: DB_SSL_CA
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: REDIS_URL
+        sync: false
