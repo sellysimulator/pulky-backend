@@ -53,8 +53,11 @@ message at startup and every signed-in user is rejected.
 
 - `app/core/` domain modules import only the standard library, pydantic and each other;
   none imports `app/core/firebase.py` or `app/core/checks/`.
-- Reach the socket manager through `get_socket_manager()` and Firebase verification
-  through `app.api.deps.verify_firebase_id_token` at call time, never bound at import.
+- Reach the socket manager through `app.sockets.manager.get_socket_manager()`, the state
+  backend through the module (`from app.services import state_backend` then
+  `state_backend.get_state_backend()`, never `from app.services.state_backend import
+  get_state_backend`) and Firebase verification through `app.api.deps.verify_firebase_id_token`
+  at call time, never bound at import, because the section 01 fixtures monkeypatch the module attribute.
 - Handlers that can fail are wrapped in `@guarded()`; errors never carry exception text.
 - REST errors are `HTTPException` with a string `detail`; never return `str(e)`.
 - Never log secrets, tokens, identities or payloads.
