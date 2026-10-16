@@ -255,7 +255,7 @@ def test_player_view_cellar_entries_match_the_cellar_view():
     config = quiet(2, supplier__quality_max=90, supplier__quality_min=70)
     e = start(config)
     v = e.player_view("P1")
-    lot = Lot("L0", 20, 0, 12.0, 90, 1, 4, False)
+    lot = Lot("L0", 30, 0, 12.0, 90, 0, 3, False)
     assert v["cellar"] == Cellar([lot]).view(1)
     assert set(v["cellar"][0]) == CELLAR_KEYS
     assert v["stock_by_age"] == Cellar([lot]).stock_by_age()
@@ -269,22 +269,22 @@ def test_section_3_5_example_qualities_and_last_days_through_the_engine():
         play(e)
     payload = copy.deepcopy(e.to_payload())
     payload["players"]["P3"]["cellar"] = [
-        Lot("L3", 12, 2, 12.0, 90, 1, 4, False).to_payload(),
-        Lot("L4", 10, 1, 12.0, 95, 1, 4, False).to_payload(),
-        Lot("L5", 20, 0, 12.0, 85, 1, 4, False).to_payload(),
+        Lot("L3", 12, 2, 12.0, 90, 0, 3, False).to_payload(),
+        Lot("L4", 10, 1, 12.0, 95, 0, 3, False).to_payload(),
+        Lot("L5", 20, 0, 12.0, 85, 0, 3, False).to_payload(),
     ]
     e = PulkyEngine.from_payload(payload, config)
     cellar = e.player_view("P3")["cellar"]
     assert [x["id"] for x in cellar] == ["L3", "L4", "L5"]
-    assert [x["quality"] for x in cellar] == [23, 62, 85]
-    assert [x["last_day"] for x in cellar] == [6, 7, 8]
+    assert [x["quality"] for x in cellar] == [0, 28, 52]
+    assert [x["last_day"] for x in cellar] == [5, 6, 7]
     for x in cellar:
         assert x["risk_tonight"] == pytest.approx(1 - x["quality"] / 100, abs=0.006)
         assert x["expected_loss_tonight"] == pytest.approx(
             x["qty"] * x["risk_tonight"], abs=0.01
         )
     guide = e.player_view("P3")["quality_guide"]
-    assert guide == quality_guide(5, 1, 4)
+    assert guide == quality_guide(5, 0, 3)
     by_quality = {row["quality"]: row for row in guide}
     assert (by_quality[90]["half_spoiled_day"], by_quality[90]["last_day"]) == (7, 8)
     assert (by_quality[50]["half_spoiled_day"], by_quality[50]["last_day"]) == (5, 7)
@@ -294,7 +294,7 @@ def test_section_3_5_example_qualities_and_last_days_through_the_engine():
 def test_quality_guide_is_empty_when_the_peer_market_is_off():
     on = start(quiet(2)).player_view("P1")
     off = start(quiet(2, peer_market__enabled=False)).player_view("P1")
-    assert on["quality_guide"] == quality_guide(1, 1, 4)
+    assert on["quality_guide"] == quality_guide(1, 0, 3)
     assert len(on["quality_guide"]) == 21
     assert off["quality_guide"] == []
 
@@ -540,12 +540,12 @@ def test_host_view_day_one_keys_and_values():
         assert set(p) == HOST_PLAYER_BASE | {"own_history"}
         assert p["display_name"] == e.display_names[alias]
         assert p["has_submitted"] is False
-        assert p["stock_units"] == 20 and p["in_transit_units"] == 0
+        assert p["stock_units"] == 30 and p["in_transit_units"] == 0
         assert p["open_futures_units"] == 0 and p["backlog"] == 0
         assert (
             p["expected_spoil_tonight"]
             == Cellar(
-                [Lot("L0", 20, 0, 12.0, 100, 1, 4, False)]
+                [Lot("L0", 30, 0, 12.0, 100, 0, 3, False)]
             ).expected_spoil_tonight()
         )
         assert p["reputation"] == 0.5 and p["market_share"] == 0

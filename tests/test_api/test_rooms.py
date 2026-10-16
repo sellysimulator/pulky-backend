@@ -77,7 +77,7 @@ def secret_headers(secret: str) -> dict[str, str]:
     return {"X-Host-Secret": secret}
 
 
-# ------------------------------------------------------------------- create
+# --------------------------------------------------- create
 
 
 def test_create_room_response(client: TestClient) -> None:
@@ -142,7 +142,7 @@ def test_two_rooms_have_different_secrets(client: TestClient) -> None:
     assert a["room_code"] != b["room_code"]
 
 
-# ------------------------------------------------------------------- status
+# --------------------------------------------------- status
 
 
 def test_status_of_a_missing_room(client: TestClient) -> None:
@@ -282,7 +282,7 @@ def test_empty_stored_secret_rejects_missing_and_empty_headers(
     assert load(code)["state"] == "lobby"
 
 
-# --------------------------------------------------------------- GET config
+# --------------------------------------------------- GET config
 
 
 def test_get_config_returns_the_full_config(client: TestClient) -> None:
@@ -305,7 +305,7 @@ def test_get_config_code_is_case_insensitive(client: TestClient) -> None:
     assert response.status_code == 200
 
 
-# --------------------------------------------------------------- PUT config
+# --------------------------------------------------- PUT config
 
 
 def put_config(
@@ -405,10 +405,10 @@ def test_put_config_invalid_patch_answers_400(
     room = create(client)
     mutate(room["room_code"], host_sid=HOST_SID)
     before = load(room["room_code"])
-    response = put_config(client, room, {"stock": {"max_days": 1}})
+    response = put_config(client, room, {"stock": {"fresh_days": 3}})
     assert response.status_code == 400
     assert response.json() == {
-        "detail": "Must be more than the fresh days (1).",
+        "detail": "Must be more than the fresh days (3).",
         "field": "stock.max_days",
     }
     assert load(room["room_code"]) == before
@@ -492,7 +492,7 @@ def test_the_secret_appears_only_in_the_create_response(
         client.get(f"{API}/rooms/{code}/status"),
         client.get(f"{API}/rooms/{code}/config", headers=headers),
         put_config(client, room, {"duration_days": 12}),
-        put_config(client, room, {"stock": {"max_days": 1}}),
+        put_config(client, room, {"stock": {"fresh_days": 3}}),
         client.get(f"{API}/rooms/{code}/config", headers=secret_headers("wrong")),
         client.get(f"{API}/rooms/NOPE99/status"),
         client.get(f"{API}/config/defaults"),

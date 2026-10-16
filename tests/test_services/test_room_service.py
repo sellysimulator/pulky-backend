@@ -486,9 +486,9 @@ def test_apply_config_update_invalid_patch_leaves_room_untouched() -> None:
     room["host_sid"] = HOST_SID
     before = copy.deepcopy(room)
     with pytest.raises(config_models.ConfigError) as info:
-        apply_config_update(room, {"stock": {"max_days": 1}}, next_seq)
+        apply_config_update(room, {"stock": {"fresh_days": 3}}, next_seq)
     assert info.value.field == "stock.max_days"
-    assert info.value.message == "Must be more than the fresh days (1)."
+    assert info.value.message == "Must be more than the fresh days (3)."
     assert room == before
 
 

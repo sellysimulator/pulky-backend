@@ -56,18 +56,18 @@ def test_validate_default_config_is_ok(client: TestClient) -> None:
 
 
 def test_validate_returns_the_documented_example_error(client: TestClient) -> None:
-    config = full_config(stock__max_days=1)
+    config = full_config(stock__fresh_days=3)
     body = client.post(VALIDATE, json={"config": config}).json()
     assert body["ok"] is False
     assert body["errors"] == [
-        {"field": "stock.max_days", "message": "Must be more than the fresh days (1)."}
+        {"field": "stock.max_days", "message": "Must be more than the fresh days (3)."}
     ]
     assert body["warnings"] == []
 
 
 def test_validate_returns_every_error_in_order(client: TestClient) -> None:
     config = full_config(
-        max_players=1, duration_days=100, demand__retail_price=0, stock__max_days=1
+        max_players=1, duration_days=100, demand__retail_price=0, stock__fresh_days=3
     )
     body = client.post(VALIDATE, json={"config": config}).json()
     expected = validate_config(config, None)
@@ -144,8 +144,8 @@ def test_validate_does_not_touch_rooms(
 
 def test_validate_result_is_the_merge_of_nothing(client: TestClient) -> None:
     # a partial config is validated against the defaults, never against a room
-    body = client.post(VALIDATE, json={"config": {"stock": {"max_days": 1}}}).json()
+    body = client.post(VALIDATE, json={"config": {"stock": {"fresh_days": 3}}}).json()
     assert body["errors"] == [
-        {"field": "stock.max_days", "message": "Must be more than the fresh days (1)."}
+        {"field": "stock.max_days", "message": "Must be more than the fresh days (3)."}
     ]
     assert GameConfig.default().to_dict() == DEFAULT_CONFIG

@@ -32,10 +32,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "futures": {"horizon_days": 7},
     "stock": {
-        "fresh_days": 1,
-        "max_days": 4,
+        "fresh_days": 0,
+        "max_days": 3,
         "holding_cost": 0.2,
-        "initial_stock": 20,
+        "initial_stock": 30,
         "salvage_value": 2.0,
         "conservation_extra_fresh_days": 2,
         "conservation_cost_per_unit": 1.0,
@@ -44,14 +44,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "transport": {
         "unit_cost": 1.0,
         "shared": False,
-        "failure_probability": 0.10,
+        "failure_probability": 0.14,
         "loss_fraction": 0.30,
     },
     "insurance": {
         "tiers": {
-            "cip": {"enabled": True, "fee": 0.40},
-            "dap": {"enabled": True, "fee": 0.40},
-            "ddp": {"enabled": True, "fee": 0.99},
+            "cip": {"enabled": True, "fee": 0.55},
+            "dap": {"enabled": True, "fee": 0.55},
+            "ddp": {"enabled": True, "fee": 1.39},
         },
         "target_margin": 0.10,
         "reference_shipment": 20,
