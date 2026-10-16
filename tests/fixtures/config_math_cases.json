@@ -1,0 +1,1023 @@
+{
+  "_comment": "Shared config-math cases (spec \u00a73.3, \u00a73.5, \u00a76.2, \u00a76.4, \u00a77.1, \u00a77.6). Copied unchanged into Pulky_Backend/tests/fixtures/ (section 11) and Pulky_Frontend/src/__tests__/fixtures/ (section 24). Compare floats with abs tolerance 1e-6; integers (quality, days_left, the guide's days) exactly.",
+  "weekday_multiplier": [
+    {
+      "day": "mon",
+      "from": "thu",
+      "to": "sat",
+      "expected": 0.25
+    },
+    {
+      "day": "tue",
+      "from": "thu",
+      "to": "sat",
+      "expected": 0.5
+    },
+    {
+      "day": "wed",
+      "from": "thu",
+      "to": "sat",
+      "expected": 0.75
+    },
+    {
+      "day": "thu",
+      "from": "thu",
+      "to": "sat",
+      "expected": 1.0
+    },
+    {
+      "day": "fri",
+      "from": "thu",
+      "to": "sat",
+      "expected": 1.0
+    },
+    {
+      "day": "sat",
+      "from": "thu",
+      "to": "sat",
+      "expected": 1.0
+    },
+    {
+      "day": "sun",
+      "from": "thu",
+      "to": "sat",
+      "expected": 0.75
+    },
+    {
+      "day": "mon",
+      "from": "mon",
+      "to": "sun",
+      "expected": 1.0
+    },
+    {
+      "day": "tue",
+      "from": "mon",
+      "to": "sun",
+      "expected": 1.0
+    },
+    {
+      "day": "wed",
+      "from": "mon",
+      "to": "sun",
+      "expected": 1.0
+    },
+    {
+      "day": "thu",
+      "from": "mon",
+      "to": "sun",
+      "expected": 1.0
+    },
+    {
+      "day": "fri",
+      "from": "mon",
+      "to": "sun",
+      "expected": 1.0
+    },
+    {
+      "day": "sat",
+      "from": "mon",
+      "to": "sun",
+      "expected": 1.0
+    },
+    {
+      "day": "sun",
+      "from": "mon",
+      "to": "sun",
+      "expected": 1.0
+    },
+    {
+      "day": "mon",
+      "from": "wed",
+      "to": "wed",
+      "expected": 0.6
+    },
+    {
+      "day": "tue",
+      "from": "wed",
+      "to": "wed",
+      "expected": 0.8
+    },
+    {
+      "day": "wed",
+      "from": "wed",
+      "to": "wed",
+      "expected": 1.0
+    },
+    {
+      "day": "thu",
+      "from": "wed",
+      "to": "wed",
+      "expected": 0.8
+    },
+    {
+      "day": "fri",
+      "from": "wed",
+      "to": "wed",
+      "expected": 0.6
+    },
+    {
+      "day": "sat",
+      "from": "wed",
+      "to": "wed",
+      "expected": 0.4
+    },
+    {
+      "day": "sun",
+      "from": "wed",
+      "to": "wed",
+      "expected": 0.2
+    },
+    {
+      "day": "mon",
+      "from": "sat",
+      "to": "sun",
+      "expected": 0.166667
+    },
+    {
+      "day": "tue",
+      "from": "sat",
+      "to": "sun",
+      "expected": 0.333333
+    },
+    {
+      "day": "wed",
+      "from": "sat",
+      "to": "sun",
+      "expected": 0.5
+    },
+    {
+      "day": "thu",
+      "from": "sat",
+      "to": "sun",
+      "expected": 0.666667
+    },
+    {
+      "day": "fri",
+      "from": "sat",
+      "to": "sun",
+      "expected": 0.833333
+    },
+    {
+      "day": "sat",
+      "from": "sat",
+      "to": "sun",
+      "expected": 1.0
+    },
+    {
+      "day": "sun",
+      "from": "sat",
+      "to": "sun",
+      "expected": 1.0
+    },
+    {
+      "day": "mon",
+      "from": "mon",
+      "to": "mon",
+      "expected": 1.0
+    },
+    {
+      "day": "tue",
+      "from": "mon",
+      "to": "mon",
+      "expected": 0.857143
+    },
+    {
+      "day": "wed",
+      "from": "mon",
+      "to": "mon",
+      "expected": 0.714286
+    },
+    {
+      "day": "thu",
+      "from": "mon",
+      "to": "mon",
+      "expected": 0.571429
+    },
+    {
+      "day": "fri",
+      "from": "mon",
+      "to": "mon",
+      "expected": 0.428571
+    },
+    {
+      "day": "sat",
+      "from": "mon",
+      "to": "mon",
+      "expected": 0.285714
+    },
+    {
+      "day": "sun",
+      "from": "mon",
+      "to": "mon",
+      "expected": 0.142857
+    }
+  ],
+  "hazard": [
+    {
+      "age": 0,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 100,
+      "expected": 0.0
+    },
+    {
+      "age": 1,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 100,
+      "expected": 0.0
+    },
+    {
+      "age": 2,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 100,
+      "expected": 0.333333
+    },
+    {
+      "age": 3,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 100,
+      "expected": 0.666667
+    },
+    {
+      "age": 4,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 100,
+      "expected": 1.0
+    },
+    {
+      "age": 5,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 100,
+      "expected": 1.0
+    },
+    {
+      "age": 1,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 100,
+      "expected": 0.0
+    },
+    {
+      "age": 2,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 100,
+      "expected": 0.0
+    },
+    {
+      "age": 3,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 100,
+      "expected": 0.0
+    },
+    {
+      "age": 4,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 100,
+      "expected": 0.333333
+    },
+    {
+      "age": 5,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 100,
+      "expected": 0.666667
+    },
+    {
+      "age": 6,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 100,
+      "expected": 1.0
+    },
+    {
+      "age": 7,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 100,
+      "expected": 1.0
+    },
+    {
+      "age": 0,
+      "fresh_days": 0,
+      "max_days": 3,
+      "initial_quality": 100,
+      "expected": 0.0
+    },
+    {
+      "age": 1,
+      "fresh_days": 0,
+      "max_days": 3,
+      "initial_quality": 100,
+      "expected": 0.333333
+    },
+    {
+      "age": 2,
+      "fresh_days": 0,
+      "max_days": 3,
+      "initial_quality": 100,
+      "expected": 0.666667
+    },
+    {
+      "age": 3,
+      "fresh_days": 0,
+      "max_days": 3,
+      "initial_quality": 100,
+      "expected": 1.0
+    },
+    {
+      "age": 4,
+      "fresh_days": 0,
+      "max_days": 3,
+      "initial_quality": 100,
+      "expected": 1.0
+    },
+    {
+      "age": 1,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 80,
+      "expected": 0.2
+    },
+    {
+      "age": 2,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 80,
+      "expected": 0.533333
+    },
+    {
+      "age": 3,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 80,
+      "expected": 0.866667
+    },
+    {
+      "age": 4,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 80,
+      "expected": 1.0
+    },
+    {
+      "age": 0,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 60,
+      "expected": 0.4
+    },
+    {
+      "age": 1,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 60,
+      "expected": 0.4
+    },
+    {
+      "age": 2,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 60,
+      "expected": 0.733333
+    },
+    {
+      "age": 3,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 60,
+      "expected": 1.0
+    },
+    {
+      "age": 1,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 90,
+      "expected": 0.1
+    },
+    {
+      "age": 2,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 90,
+      "expected": 0.1
+    },
+    {
+      "age": 3,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 90,
+      "expected": 0.1
+    },
+    {
+      "age": 4,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 90,
+      "expected": 0.433333
+    },
+    {
+      "age": 5,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 90,
+      "expected": 0.766667
+    },
+    {
+      "age": 6,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 90,
+      "expected": 1.0
+    }
+  ],
+  "quality": [
+    {
+      "age": 0,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 100,
+      "expected_quality": 100,
+      "expected_days_left": 4
+    },
+    {
+      "age": 1,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 100,
+      "expected_quality": 67,
+      "expected_days_left": 3
+    },
+    {
+      "age": 2,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 100,
+      "expected_quality": 33,
+      "expected_days_left": 2
+    },
+    {
+      "age": 3,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 100,
+      "expected_quality": 0,
+      "expected_days_left": 1
+    },
+    {
+      "age": 2,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 90,
+      "expected_quality": 23,
+      "expected_days_left": 2
+    },
+    {
+      "age": 1,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 95,
+      "expected_quality": 62,
+      "expected_days_left": 3
+    },
+    {
+      "age": 0,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 85,
+      "expected_quality": 85,
+      "expected_days_left": 4
+    },
+    {
+      "age": 1,
+      "fresh_days": 1,
+      "max_days": 4,
+      "initial_quality": 88,
+      "expected_quality": 55,
+      "expected_days_left": 3
+    },
+    {
+      "age": 2,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 100,
+      "expected_quality": 100,
+      "expected_days_left": 4
+    },
+    {
+      "age": 2,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 90,
+      "expected_quality": 90,
+      "expected_days_left": 4
+    },
+    {
+      "age": 4,
+      "fresh_days": 3,
+      "max_days": 6,
+      "initial_quality": 90,
+      "expected_quality": 23,
+      "expected_days_left": 2
+    },
+    {
+      "age": 0,
+      "fresh_days": 0,
+      "max_days": 4,
+      "initial_quality": 100,
+      "expected_quality": 75,
+      "expected_days_left": 4
+    },
+    {
+      "age": 0,
+      "fresh_days": 2,
+      "max_days": 5,
+      "initial_quality": 70,
+      "expected_quality": 70,
+      "expected_days_left": 5
+    }
+  ],
+  "quality_guide": [
+    {
+      "day": 5,
+      "fresh_days": 1,
+      "max_days": 4,
+      "expected": [
+        {
+          "quality": 100,
+          "half_spoiled_day": 7,
+          "last_day": 8
+        },
+        {
+          "quality": 95,
+          "half_spoiled_day": 7,
+          "last_day": 8
+        },
+        {
+          "quality": 90,
+          "half_spoiled_day": 7,
+          "last_day": 8
+        },
+        {
+          "quality": 85,
+          "half_spoiled_day": 6,
+          "last_day": 8
+        },
+        {
+          "quality": 80,
+          "half_spoiled_day": 6,
+          "last_day": 8
+        },
+        {
+          "quality": 75,
+          "half_spoiled_day": 6,
+          "last_day": 8
+        },
+        {
+          "quality": 70,
+          "half_spoiled_day": 6,
+          "last_day": 8
+        },
+        {
+          "quality": 65,
+          "half_spoiled_day": 6,
+          "last_day": 7
+        },
+        {
+          "quality": 60,
+          "half_spoiled_day": 6,
+          "last_day": 7
+        },
+        {
+          "quality": 55,
+          "half_spoiled_day": 6,
+          "last_day": 7
+        },
+        {
+          "quality": 50,
+          "half_spoiled_day": 5,
+          "last_day": 7
+        },
+        {
+          "quality": 45,
+          "half_spoiled_day": 5,
+          "last_day": 7
+        },
+        {
+          "quality": 40,
+          "half_spoiled_day": 5,
+          "last_day": 7
+        },
+        {
+          "quality": 35,
+          "half_spoiled_day": 5,
+          "last_day": 7
+        },
+        {
+          "quality": 30,
+          "half_spoiled_day": 5,
+          "last_day": 6
+        },
+        {
+          "quality": 25,
+          "half_spoiled_day": 5,
+          "last_day": 6
+        },
+        {
+          "quality": 20,
+          "half_spoiled_day": 5,
+          "last_day": 6
+        },
+        {
+          "quality": 15,
+          "half_spoiled_day": 5,
+          "last_day": 6
+        },
+        {
+          "quality": 10,
+          "half_spoiled_day": 5,
+          "last_day": 6
+        },
+        {
+          "quality": 5,
+          "half_spoiled_day": 5,
+          "last_day": 6
+        },
+        {
+          "quality": 0,
+          "half_spoiled_day": 5,
+          "last_day": 5
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "fresh_days": 2,
+      "max_days": 7,
+      "expected": [
+        {
+          "quality": 100,
+          "half_spoiled_day": 5,
+          "last_day": 8
+        },
+        {
+          "quality": 95,
+          "half_spoiled_day": 5,
+          "last_day": 8
+        },
+        {
+          "quality": 90,
+          "half_spoiled_day": 5,
+          "last_day": 8
+        },
+        {
+          "quality": 85,
+          "half_spoiled_day": 5,
+          "last_day": 8
+        },
+        {
+          "quality": 80,
+          "half_spoiled_day": 4,
+          "last_day": 7
+        },
+        {
+          "quality": 75,
+          "half_spoiled_day": 4,
+          "last_day": 7
+        },
+        {
+          "quality": 70,
+          "half_spoiled_day": 4,
+          "last_day": 7
+        },
+        {
+          "quality": 65,
+          "half_spoiled_day": 4,
+          "last_day": 7
+        },
+        {
+          "quality": 60,
+          "half_spoiled_day": 4,
+          "last_day": 6
+        },
+        {
+          "quality": 55,
+          "half_spoiled_day": 4,
+          "last_day": 6
+        },
+        {
+          "quality": 50,
+          "half_spoiled_day": 3,
+          "last_day": 6
+        },
+        {
+          "quality": 45,
+          "half_spoiled_day": 3,
+          "last_day": 6
+        },
+        {
+          "quality": 40,
+          "half_spoiled_day": 3,
+          "last_day": 5
+        },
+        {
+          "quality": 35,
+          "half_spoiled_day": 3,
+          "last_day": 5
+        },
+        {
+          "quality": 30,
+          "half_spoiled_day": 3,
+          "last_day": 5
+        },
+        {
+          "quality": 25,
+          "half_spoiled_day": 3,
+          "last_day": 5
+        },
+        {
+          "quality": 20,
+          "half_spoiled_day": 3,
+          "last_day": 4
+        },
+        {
+          "quality": 15,
+          "half_spoiled_day": 3,
+          "last_day": 4
+        },
+        {
+          "quality": 10,
+          "half_spoiled_day": 3,
+          "last_day": 4
+        },
+        {
+          "quality": 5,
+          "half_spoiled_day": 3,
+          "last_day": 4
+        },
+        {
+          "quality": 0,
+          "half_spoiled_day": 3,
+          "last_day": 3
+        }
+      ]
+    }
+  ],
+  "reputation_step": [
+    {
+      "reputation": 0.6,
+      "fill": 0.8,
+      "waste": 0.2,
+      "smoothing": 0.3,
+      "waste_weight": 0.3,
+      "expected": 0.66
+    },
+    {
+      "reputation": 0.5,
+      "fill": 1.0,
+      "waste": 0.0,
+      "smoothing": 0.3,
+      "waste_weight": 0.3,
+      "expected": 0.65
+    },
+    {
+      "reputation": 1.0,
+      "fill": 1.0,
+      "waste": 0.0,
+      "smoothing": 0.3,
+      "waste_weight": 0.3,
+      "expected": 1.0
+    },
+    {
+      "reputation": 0.5,
+      "fill": 0.0,
+      "waste": 1.0,
+      "smoothing": 0.3,
+      "waste_weight": 0.3,
+      "expected": 0.35
+    },
+    {
+      "reputation": 0.7,
+      "fill": 0.5,
+      "waste": 0.5,
+      "smoothing": 0.0,
+      "waste_weight": 0.3,
+      "expected": 0.7
+    },
+    {
+      "reputation": 0.2,
+      "fill": 0.9,
+      "waste": 0.1,
+      "smoothing": 1.0,
+      "waste_weight": 0.5,
+      "expected": 0.9
+    }
+  ],
+  "break_even_fee": [
+    {
+      "tier": "cip",
+      "failure_probability": 0.1,
+      "loss_fraction": 0.3,
+      "shared": false,
+      "n_ref": 4,
+      "reference_shipment": 20,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.36
+    },
+    {
+      "tier": "cip",
+      "failure_probability": 0.1,
+      "loss_fraction": 0.3,
+      "shared": true,
+      "n_ref": 4,
+      "reference_shipment": 20,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.06
+    },
+    {
+      "tier": "cip",
+      "failure_probability": 0.1,
+      "loss_fraction": 0.3,
+      "shared": true,
+      "n_ref": 3,
+      "reference_shipment": 20,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.12
+    },
+    {
+      "tier": "cip",
+      "failure_probability": 0.0,
+      "loss_fraction": 0.3,
+      "shared": false,
+      "n_ref": 4,
+      "reference_shipment": 20,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.0
+    },
+    {
+      "tier": "cip",
+      "failure_probability": 0.1,
+      "loss_fraction": 0.3,
+      "shared": false,
+      "n_ref": 4,
+      "reference_shipment": 3,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.0
+    },
+    {
+      "tier": "cip",
+      "failure_probability": 0.25,
+      "loss_fraction": 0.5,
+      "shared": true,
+      "n_ref": 12,
+      "reference_shipment": 10,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.0
+    },
+    {
+      "tier": "dap",
+      "failure_probability": 0.1,
+      "loss_fraction": 0.3,
+      "shared": false,
+      "n_ref": 4,
+      "reference_shipment": 20,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.36
+    },
+    {
+      "tier": "dap",
+      "failure_probability": 0.1,
+      "loss_fraction": 0.3,
+      "shared": true,
+      "n_ref": 4,
+      "reference_shipment": 20,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.06
+    },
+    {
+      "tier": "dap",
+      "failure_probability": 0.1,
+      "loss_fraction": 0.3,
+      "shared": true,
+      "n_ref": 3,
+      "reference_shipment": 20,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.12
+    },
+    {
+      "tier": "dap",
+      "failure_probability": 0.0,
+      "loss_fraction": 0.3,
+      "shared": false,
+      "n_ref": 4,
+      "reference_shipment": 20,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.0
+    },
+    {
+      "tier": "dap",
+      "failure_probability": 0.1,
+      "loss_fraction": 0.3,
+      "shared": false,
+      "n_ref": 4,
+      "reference_shipment": 3,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.0
+    },
+    {
+      "tier": "dap",
+      "failure_probability": 0.25,
+      "loss_fraction": 0.5,
+      "shared": true,
+      "n_ref": 12,
+      "reference_shipment": 10,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.0
+    },
+    {
+      "tier": "ddp",
+      "failure_probability": 0.1,
+      "loss_fraction": 0.3,
+      "shared": false,
+      "n_ref": 4,
+      "reference_shipment": 20,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.9
+    },
+    {
+      "tier": "ddp",
+      "failure_probability": 0.1,
+      "loss_fraction": 0.3,
+      "shared": true,
+      "n_ref": 4,
+      "reference_shipment": 20,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.15
+    },
+    {
+      "tier": "ddp",
+      "failure_probability": 0.1,
+      "loss_fraction": 0.3,
+      "shared": true,
+      "n_ref": 3,
+      "reference_shipment": 20,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.3
+    },
+    {
+      "tier": "ddp",
+      "failure_probability": 0.0,
+      "loss_fraction": 0.3,
+      "shared": false,
+      "n_ref": 4,
+      "reference_shipment": 20,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.0
+    },
+    {
+      "tier": "ddp",
+      "failure_probability": 0.1,
+      "loss_fraction": 0.3,
+      "shared": false,
+      "n_ref": 4,
+      "reference_shipment": 3,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.0
+    },
+    {
+      "tier": "ddp",
+      "failure_probability": 0.25,
+      "loss_fraction": 0.5,
+      "shared": true,
+      "n_ref": 12,
+      "reference_shipment": 10,
+      "base_price": 12,
+      "retail_price": 30,
+      "expected": 0.0
+    }
+  ]
+}
