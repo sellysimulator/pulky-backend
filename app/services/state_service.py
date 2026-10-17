@@ -74,6 +74,10 @@ def _lock_key(room_code: str) -> str:
     return f"lock:room:{room_code.upper()}"
 
 
+def _encode(room: dict) -> str:
+    return json.dumps(room, separators=(",", ":"))
+
+
 class StateService:
     def __init__(
         self,
@@ -87,21 +91,24 @@ class StateService:
         self._lock_timeout = lock_timeout
 
     async def create_room(self, config: dict, host_display_name: str) -> dict:
+        """A new room under a code no live room holds. The write is set-if-absent, so
+        two creations that draw the same code at once cannot both take it."""
+        host_secret = new_host_secret()
+        created_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         for _ in range(_MAX_CODE_TRIES):
             code = generate_room_code()
-            if not await self.room_exists(code):
-                break
-        else:
-            raise RuntimeError("Could not find a free room code.")
-        room = new_room_document(
-            room_code=code,
-            config=config,
-            host_display_name=host_display_name,
-            host_secret=new_host_secret(),
-            created_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        )
-        await self.save_room(code, room)
-        return room
+            room = new_room_document(
+                room_code=code,
+                config=config,
+                host_display_name=host_display_name,
+                host_secret=host_secret,
+                created_at=created_at,
+            )
+            if await self._backend.set(
+                _room_key(code), _encode(room), ex=self._ttl, nx=True
+            ):
+                return room
+        raise RuntimeError("Could not find a free room code.")
 
     async def get_room(self, room_code: str) -> dict | None:
         key = _room_key(room_code)
@@ -126,9 +133,7 @@ class StateService:
     async def save_room(self, room_code: str, room: dict) -> None:
         if room.get("room_code") != room_code.upper():
             raise ValueError("room_code does not match the room document.")
-        await self._backend.setex(
-            _room_key(room_code), self._ttl, json.dumps(room, separators=(",", ":"))
-        )
+        await self._backend.setex(_room_key(room_code), self._ttl, _encode(room))
 
     async def delete_room(self, room_code: str) -> None:
         await self._backend.delete(_room_key(room_code))

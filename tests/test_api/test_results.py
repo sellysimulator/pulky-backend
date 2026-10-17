@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config_models import GameConfig
 from app.core.defaults import DEFAULT_CONFIG
 from app.core.engine import PulkyEngine
-from app.core.enums import Incoterm
+from app.core.enums import IncotermTier
 from app.core.records import Decision, PeerBuy, PeerSell
 from app.db.session import get_db
 from app.main import app
@@ -133,14 +133,16 @@ def play_game(
     for day in range(1, last + 1):
         for alias in engine.aliases:
             if day == 1 and alias == "P1":
-                d = Decision(1, 10, 0, Incoterm.CIP, ("L0",), False)
+                d = Decision(1, 10, 0, IncotermTier.CIP, ("L0",), False)
             elif day == 1 and alias == "P2":
-                d = Decision(1, 30, 0, Incoterm.DAP, (), True)
+                d = Decision(1, 30, 0, IncotermTier.DAP, (), True)
             elif day == 2 and alias == "P1":
-                d = Decision(2, 40, 0, Incoterm.EXW, (), False, PeerBuy(20.0, 0), None)
+                d = Decision(
+                    2, 40, 0, IncotermTier.EXW, (), False, PeerBuy(20.0, 0), None
+                )
             elif day == 2 and alias == "P2":
                 d = Decision(
-                    2, 0, 0, Incoterm.EXW, (), False, None, PeerSell(15.0, 100, 25)
+                    2, 0, 0, IncotermTier.EXW, (), False, None, PeerSell(15.0, 100, 25)
                 )
             else:
                 d = Decision.zero(day)
@@ -161,8 +163,10 @@ def make_room(
     started_at: str = STARTED,
     finished_at: str = FINISHED,
     host_name: str = "Ms. Ruiz",
+    game_id: str | None = None,
 ) -> dict[str, Any]:
-    """A finished room document. Default: every player and the host are guests."""
+    """A finished room document with the game id it got when it finished.
+    Default: every player and the host are guests."""
     room = new_room_document(
         room_code=code,
         config=engine.config.to_dict(),
@@ -174,6 +178,7 @@ def make_room(
     room["state"] = "finished"
     room["started_at"] = started_at
     room["finished_at"] = finished_at
+    room["game_id"] = game_id or uuid.uuid4().hex
     room["host_identity"] = host_identity or guest_id(9999)
     room["seed"] = engine.seed
     room["participants"] = {
@@ -375,7 +380,7 @@ def check_parity(body: dict[str, Any], engine: PulkyEngine) -> None:
 
 
 @pytest.mark.parametrize("fixture_name", ["natural_engine", "early_engine"])
-def test_ac1_both_routes_equal_the_live_results(
+def test_ac1_the_results_route_equals_the_live_results(
     fixture_name: str,
     request: pytest.FixtureRequest,
     api: TestClient,
@@ -383,12 +388,9 @@ def test_ac1_both_routes_equal_the_live_results(
 ) -> None:
     engine: PulkyEngine = request.getfixturevalue(fixture_name)
     gid = persist(make_room(engine), factory)
-    by_code = api.get("/api/v1/games/ABC234/results")
     by_id = api.get(f"/api/v1/games/id/{gid}/results")
-    assert by_code.status_code == 200 and by_id.status_code == 200
-    check_parity(by_code.json(), engine)
+    assert by_id.status_code == 200
     check_parity(by_id.json(), engine)
-    assert by_code.json() == by_id.json()
 
 
 def test_results_metadata_and_shape(
@@ -399,7 +401,7 @@ def test_results_metadata_and_shape(
 ) -> None:
     room = make_room(natural_engine, code="XYZ789", host_name="Ms. Ruiz")
     gid = persist(room, factory)
-    body = api.get("/api/v1/games/XYZ789/results").json()
+    body = api.get(f"/api/v1/games/id/{gid}/results").json()
     assert set(body) == RESULTS_KEYS
     assert body["game_id"] == gid
     assert body["room_code"] == "XYZ789"
@@ -411,8 +413,6 @@ def test_results_metadata_and_shape(
     assert body["finished_at"] == FINISHED
     assert set(body["stats"]) == {"players", "market"}
     assert set(body["stats"]["players"]) == set(natural_engine.aliases)
-    # the room code is looked up case-insensitively
-    assert api.get("/api/v1/games/xyz789/results").json() == body
     # the service builds the same document the route serves
     assert norm(results_response(stored(db_session, gid))) == body
 
@@ -456,8 +456,8 @@ def test_fm7_a_stored_row_that_drifts_from_the_live_result_fails_parity(
 def test_fm7_peer_fields_survive_the_round_trip_into_the_summary(
     api: TestClient, factory: Callable[[], Session], natural_engine: PulkyEngine
 ) -> None:
-    persist(make_room(natural_engine), factory)
-    stats = api.get("/api/v1/games/ABC234/results").json()["stats"]
+    gid = persist(make_room(natural_engine), factory)
+    stats = api.get(f"/api/v1/games/id/{gid}/results").json()["stats"]
     live = norm(natural_engine.results())["stats"]
     p1, p2 = stats["players"]["P1"], stats["players"]["P2"]
     assert p1["peer_units_bought"] == live["players"]["P1"]["peer_units_bought"] > 0
@@ -473,9 +473,11 @@ def test_fm7_peer_fields_survive_the_round_trip_into_the_summary(
 # --------------------------------------------------- AC 2, 404s
 
 
-def test_ac2_a_reused_room_code_returns_the_most_recent_game(
+def test_ac2_games_under_a_reused_room_code_are_each_served_by_their_own_id(
     api: TestClient, factory: Callable[[], Session], natural_engine: PulkyEngine
 ) -> None:
+    """A room code is reissued once its live room expires: results are reached by
+    game id only, so a later game never takes over an earlier game's link."""
     other = play_game(seed=5, early=True)
     newer = persist(
         make_room(
@@ -485,15 +487,14 @@ def test_ac2_a_reused_room_code_returns_the_most_recent_game(
         ),
         factory,
     )
-    # the older game is written last, so insertion order is not recency
     older = persist(make_room(natural_engine), factory)
     assert newer != older
-    by_code = api.get("/api/v1/games/ABC234/results").json()
-    assert by_code["game_id"] == newer
-    assert by_code["ended_early"] is True
-    check_parity(by_code, other)
-    # each game stays reachable by its own id
-    assert api.get(f"/api/v1/games/id/{older}/results").json()["game_id"] == older
+    for gid, engine in ((older, natural_engine), (newer, other)):
+        body = api.get(f"/api/v1/games/id/{gid}/results").json()
+        assert body["game_id"] == gid and body["room_code"] == "ABC234"
+        check_parity(body, engine)
+    # there is no route by room code
+    assert api.get("/api/v1/games/ABC234/results").status_code == 404
 
 
 def test_unknown_code_and_unknown_id_answer_404(
@@ -501,7 +502,6 @@ def test_unknown_code_and_unknown_id_answer_404(
 ) -> None:
     gid = persist(make_room(natural_engine), factory)
     for url in (
-        "/api/v1/games/NOPE99/results",
         f"/api/v1/games/id/{'0' * 32}/results",
         "/api/v1/games/id/not-a-game/results",
     ):
@@ -516,7 +516,7 @@ def test_ac3_results_routes_carry_no_identity_or_credential(
 ) -> None:
     room = make_room(natural_engine)
     gid = persist(room, factory)
-    for url in ("/api/v1/games/ABC234/results", f"/api/v1/games/id/{gid}/results"):
+    for url in (f"/api/v1/games/id/{gid}/results",):
         res = api.get(url)
         assert_no_secrets(res.text, secrets_of(room))
         assert_no_secrets(dict(res.headers), secrets_of(room))

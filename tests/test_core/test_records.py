@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from app.core.enums import Incoterm, TradeSide, Weekday
+from app.core.enums import IncotermTier, TradeSide, Weekday
 from app.core.records import (
     MSG_CONSERVE_INVALID,
     MSG_PEER_OFF,
@@ -44,7 +44,7 @@ def good(**over: Any) -> dict:
         "day": 5,
         "order_spot": 40,
         "order_futures": 25,
-        "incoterm": "cip",
+        "incoterm_tier": "cip",
         "conserve_lots": ["L3"],
         "cooperate": True,
         "peer_buy": {"max_price": 16, "min_quality": 90},
@@ -115,7 +115,7 @@ def test_parse_worked_example() -> None:
         day=5,
         order_spot=40,
         order_futures=25,
-        incoterm=Incoterm.CIP,
+        incoterm_tier=IncotermTier.CIP,
         conserve_lots=("L3",),
         cooperate=True,
         peer_buy=PeerBuy(16.0, 90),
@@ -162,11 +162,11 @@ def test_float_order_rejected_not_truncated() -> None:
 
 def test_tier_exact_match_only() -> None:
     for bad in ("EXW", "Exw", "CIP", " exw", "exw ", "fob", ""):
-        assert rejected(incoterm=bad) == MSG_TIER_UNAVAILABLE
+        assert rejected(incoterm_tier=bad) == MSG_TIER_UNAVAILABLE
     for ok in ("exw", "cip", "dap", "ddp"):
-        assert parse_decision(good(incoterm=ok)).incoterm == Incoterm(ok)
-    assert rejected(incoterm=1) == MSG_UNREADABLE
-    assert rejected(incoterm=None) == MSG_UNREADABLE
+        assert parse_decision(good(incoterm_tier=ok)).incoterm_tier == IncotermTier(ok)
+    assert rejected(incoterm_tier=1) == MSG_UNREADABLE
+    assert rejected(incoterm_tier=None) == MSG_UNREADABLE
 
 
 def test_truthy_cooperate_rejected() -> None:
@@ -221,7 +221,7 @@ def test_missing_key_and_non_dict() -> None:
         "day",
         "order_spot",
         "order_futures",
-        "incoterm",
+        "incoterm_tier",
         "conserve_lots",
         "cooperate",
         "peer_buy",
@@ -291,9 +291,9 @@ def test_checks_run_in_order() -> None:
     """A payload failing two checks raises the earlier one's message."""
     bad_tier = "EXW"
     # 1 before 2
-    assert rejected(order_spot=True, incoterm=bad_tier) == MSG_UNREADABLE
+    assert rejected(order_spot=True, incoterm_tier=bad_tier) == MSG_UNREADABLE
     # 2 before 3
-    assert rejected(incoterm=bad_tier, order_spot=10000) == MSG_TIER_UNAVAILABLE
+    assert rejected(incoterm_tier=bad_tier, order_spot=10000) == MSG_TIER_UNAVAILABLE
     # 3 before 4
     many = [f"L{i}" for i in range(31)]
     assert rejected(order_spot=10000, conserve_lots=many) == msg_order_bounds()
@@ -334,7 +334,7 @@ def test_decision_zero() -> None:
         "day": 1,
         "order_spot": 0,
         "order_futures": 0,
-        "incoterm": "exw",
+        "incoterm_tier": "exw",
         "conserve_lots": [],
         "cooperate": False,
         "peer_buy": None,
@@ -350,13 +350,13 @@ def test_decision_payload_round_trip() -> None:
         "day",
         "order_spot",
         "order_futures",
-        "incoterm",
+        "incoterm_tier",
         "conserve_lots",
         "cooperate",
         "peer_buy",
         "peer_sell",
     ]
-    assert payload["incoterm"] == "cip" and payload["conserve_lots"] == ["L3"]
+    assert payload["incoterm_tier"] == "cip" and payload["conserve_lots"] == ["L3"]
     assert payload["peer_buy"] == {"max_price": 16.0, "min_quality": 90}
     assert payload["peer_sell"] == {"price": 15.0, "max_quality": 60, "max_units": 10}
     assert json.loads(json.dumps(payload)) == payload
@@ -401,11 +401,11 @@ def test_peer_trade_payload() -> None:
 
 def test_shipment_round_trip() -> None:
     s = Shipment(
-        qty=40, lost=5, unit_cost=12.4375, incoterm=Incoterm.DAP, shipped_day=3
+        qty=40, lost=5, unit_cost=12.4375, incoterm_tier=IncotermTier.DAP, shipped_day=3
     )
     p = s.to_payload()
-    assert p["incoterm"] == "dap"
-    assert set(p) == {"qty", "lost", "unit_cost", "incoterm", "shipped_day"}
+    assert p["incoterm_tier"] == "dap"
+    assert set(p) == {"qty", "lost", "unit_cost", "incoterm_tier", "shipped_day"}
     assert p["unit_cost"] == 12.4375
     assert Shipment.from_payload(json.loads(json.dumps(p))) == s
 
@@ -414,7 +414,7 @@ def test_shipment_round_trip() -> None:
 
 DAY_RECORD_FIELDS = [
     "day", "weekday",
-    "order_spot", "order_futures", "incoterm", "conserve_lots",
+    "order_spot", "order_futures", "incoterm_tier", "conserve_lots",
     "lots_conserved", "cooperate", "peer_buy", "peer_sell",
     "outlay",
     "opening_stock", "futures_due", "futures_filled", "futures_unfilled",
@@ -448,7 +448,7 @@ def make_record(with_peers: bool = True) -> DayRecord:
     for name in ints:
         values[name] = int(values[name]) + 100
     values["weekday"] = Weekday.THU
-    values["incoterm"] = Incoterm.DDP
+    values["incoterm_tier"] = IncotermTier.DDP
     values["conserve_lots"] = ("L1", "L7")
     values["cooperate"] = True
     values["refrigeration_failure"] = True
@@ -477,7 +477,7 @@ def test_day_record_json_round_trip_every_field() -> None:
             assert getattr(back, f.name) == getattr(rec, f.name), f.name
         assert isinstance(back.conserve_lots, tuple)
         assert isinstance(back.peer_trades, tuple)
-        assert back.weekday is Weekday.THU and back.incoterm is Incoterm.DDP
+        assert back.weekday is Weekday.THU and back.incoterm_tier is IncotermTier.DDP
         assert len(back.peer_trades) == 2
         assert isinstance(back.peer_trades[0], PeerTrade)
         if not with_peers:
@@ -486,11 +486,11 @@ def test_day_record_json_round_trip_every_field() -> None:
 
 def test_day_record_payload_forms() -> None:
     p = make_record().to_payload()
-    assert p["weekday"] == "thu" and p["incoterm"] == "ddp"
+    assert p["weekday"] == "thu" and p["incoterm_tier"] == "ddp"
     assert p["conserve_lots"] == ["L1", "L7"]
     assert p["peer_buy"] == {"max_price": 16.25, "min_quality": 90}
     assert p["peer_trades"][0]["side"] == "buy"
-    assert type(p["weekday"]) is str and type(p["incoterm"]) is str
+    assert type(p["weekday"]) is str and type(p["incoterm_tier"]) is str
     q = make_record(False).to_payload()
     assert q["peer_buy"] is None and q["peer_sell"] is None
 
@@ -635,7 +635,7 @@ def test_records_are_frozen() -> None:
         (PeerBuy(1.0, 1), "max_price", 2.0),
         (PeerSell(1.0, 1, 1), "price", 2.0),
         (PeerTrade(TradeSide.BUY, "P1", "L1", 1, 1, 1.0), "qty", 2),
-        (Shipment(1, 0, 1.0, Incoterm.EXW, 1), "qty", 2),
+        (Shipment(1, 0, 1.0, IncotermTier.EXW, 1), "qty", 2),
         (make_record(), "profit", 0.0),
         (make_market(), "capacity", 1),
         (PublicPlayerDay(1, 0.5, 0.5), "units_sold", 2),
@@ -649,11 +649,11 @@ def test_records_are_frozen() -> None:
 
 def test_decision_field_order() -> None:
     assert [f.name for f in dataclasses.fields(Decision)] == [
-        "day", "order_spot", "order_futures", "incoterm", "conserve_lots",
+        "day", "order_spot", "order_futures", "incoterm_tier", "conserve_lots",
         "cooperate", "peer_buy", "peer_sell",
     ]  # fmt: skip
     assert [f.name for f in dataclasses.fields(Shipment)] == [
-        "qty", "lost", "unit_cost", "incoterm", "shipped_day",
+        "qty", "lost", "unit_cost", "incoterm_tier", "shipped_day",
     ]  # fmt: skip
     assert [f.name for f in dataclasses.fields(PublicDayResults)] == [
         "day", "weekday", "demand_total", "units_sold_total", "spot_price",

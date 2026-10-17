@@ -58,7 +58,7 @@ def dec(code: str, day: int, **over: Any) -> dict[str, Any]:
         "day": day,
         "order_spot": 0,
         "order_futures": 0,
-        "incoterm": "exw",
+        "incoterm_tier": "exw",
         "conserve_lots": [],
         "cooperate": False,
         "peer_buy": None,
@@ -106,6 +106,8 @@ class PersistSpy:
 
     def __init__(self, world: World) -> None:
         self.world = world
+        # None makes the call fail; otherwise, like the real function, the call
+        # returns the id the room was given when it finished.
         self.result: str | None = "game-id-1"
         self.snapshots: list[dict[str, Any]] = []
         self.records_at_call: list[int] = []
@@ -118,6 +120,9 @@ class PersistSpy:
         self.records_at_call.append(len(self.world.sm.records))
         self.idents.append(threading.get_ident())
         self.lock_depth.append(self.watch.depth if self.watch else 0)
+        if self.result is None:
+            return None
+        self.result = str(room["game_id"])
         return self.result
 
 

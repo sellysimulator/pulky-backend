@@ -12,7 +12,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from app.core.calendar import weekday_of
-from app.core.enums import Incoterm, TradeSide
+from app.core.enums import IncotermTier, TradeSide
 from app.core.money import round_cents
 from app.core.records import (
     DayRecord,
@@ -73,7 +73,7 @@ PLAYER_KEYS = {
     "days_cooperated",
     "peak_stock",
     "peak_backlog",
-    "incoterm_days",
+    "incoterm_tier_days",
     "series",
     "final_settlement",
 }
@@ -131,7 +131,7 @@ def rec(day: int = 1, **kw: Any) -> DayRecord:
         weekday=weekday_of(day),
         order_spot=0,
         order_futures=0,
-        incoterm=Incoterm.EXW,
+        incoterm_tier=IncotermTier.EXW,
         conserve_lots=(),
         lots_conserved=0,
         cooperate=False,
@@ -253,7 +253,7 @@ def example_one() -> dict:
             profit=100.00,
             reputation_end=0.55,
             cooperate=True,
-            incoterm=Incoterm.CIP,
+            incoterm_tier=IncotermTier.CIP,
         ),
         rec(
             2,
@@ -270,7 +270,7 @@ def example_one() -> dict:
             profit=150.50,
             reputation_end=0.62,
             cooperate=False,
-            incoterm=Incoterm.EXW,
+            incoterm_tier=IncotermTier.EXW,
         ),
     ]
     p2 = [
@@ -348,7 +348,7 @@ def mixed_scenario() -> tuple[dict, dict[str, list[DayRecord]], list[MarketDay]]
             profit=50.0,
             reputation_end=0.6,
             cooperate=True,
-            incoterm=Incoterm.CIP,
+            incoterm_tier=IncotermTier.CIP,
         ),
         rec(
             2,
@@ -378,7 +378,7 @@ def mixed_scenario() -> tuple[dict, dict[str, list[DayRecord]], list[MarketDay]]
             profit=-3.5,
             reputation_end=0.4,
             cooperate=True,
-            incoterm=Incoterm.DAP,
+            incoterm_tier=IncotermTier.DAP,
         ),
     ]
     p2 = [
@@ -493,7 +493,7 @@ def random_data(
                     d,
                     order_spot=r.randint(0, 40),
                     order_futures=r.randint(0, 40),
-                    incoterm=r.choice(list(Incoterm)),
+                    incoterm_tier=r.choice(list(IncotermTier)),
                     conserve_lots=("L1", "L2"),
                     cooperate=r.random() < 0.5,
                     peer_buy=PeerBuy(16.0, 90),
@@ -578,7 +578,7 @@ def check_shapes(out: dict) -> None:
     for stats in out["players"].values():
         assert set(stats) == PLAYER_KEYS
         assert set(stats["series"]) == PLAYER_SERIES_KEYS
-        assert set(stats["incoterm_days"]) == {"exw", "cip", "dap", "ddp"}
+        assert set(stats["incoterm_tier_days"]) == {"exw", "cip", "dap", "ddp"}
     assert set(out["market"]) == MARKET_KEYS
     assert set(out["market"]["series"]) == MARKET_SERIES_KEYS
 
@@ -614,7 +614,7 @@ def test_player_without_records_and_game_without_market_days() -> None:
         assert p["peak_backlog"] == 0
         assert p["days_with_backlog"] == 0
         assert p["days_cooperated"] == 0
-        assert p["incoterm_days"] == {"exw": 0, "cip": 0, "dap": 0, "ddp": 0}
+        assert p["incoterm_tier_days"] == {"exw": 0, "cip": 0, "dap": 0, "ddp": 0}
         assert all(v == [] for v in p["series"].values())
     m = out["market"]
     assert m["demand_total"] == 0
@@ -654,7 +654,7 @@ def test_example_one_players() -> None:
     assert p1["avg_reputation"] == pytest.approx(0.585, **APPROX)
     assert p1["final_reputation"] == pytest.approx(0.62, **APPROX)
     assert p1["days_cooperated"] == 1
-    assert p1["incoterm_days"] == {"exw": 1, "cip": 1, "dap": 0, "ddp": 0}
+    assert p1["incoterm_tier_days"] == {"exw": 1, "cip": 1, "dap": 0, "ddp": 0}
     assert p1["overall_market_share"] == pytest.approx(50 / 95, **APPROX)
     assert p1["series"]["profit"] == pytest.approx([100.0, 150.5], **APPROX)
     assert p1["revenue_liquidation"] == pytest.approx(10.0, **APPROX)
@@ -748,7 +748,7 @@ def test_mixed_scenario_player_one() -> None:
     assert p["days_with_backlog"] == 2
     assert p["peak_stock"] == 9
     assert p["peak_backlog"] == 2
-    assert p["incoterm_days"] == {"exw": 1, "cip": 1, "dap": 1, "ddp": 0}
+    assert p["incoterm_tier_days"] == {"exw": 1, "cip": 1, "dap": 1, "ddp": 0}
     assert p["overall_market_share"] == pytest.approx(20 / 50, **APPROX)
     assert p["series"]["delivered"] == [10, 5, 0]
     assert p["series"]["reputation"] == pytest.approx([0.6, 0.5, 0.4], **APPROX)

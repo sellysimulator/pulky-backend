@@ -333,7 +333,6 @@ def test_column_types(
 @pytest.mark.parametrize(
     ("table", "expected"),
     [
-        ("games", ["room_code", "started_at"]),
         ("game_configs", ["game_id"]),
         ("participants", ["game_id", "alias"]),
         ("player_days", ["game_id", "day", "alias"]),
@@ -346,8 +345,9 @@ def test_unique_constraints(engine: Engine, table: str, expected: list[str]) -> 
     assert expected in unique_column_sets(engine, table)
 
 
-def test_room_code_is_indexed_but_not_unique_alone(engine: Engine) -> None:
-    assert ["room_code"] not in unique_column_sets(engine, "games")
+def test_room_code_is_indexed_but_never_part_of_a_unique_key(engine: Engine) -> None:
+    for columns in unique_column_sets(engine, "games"):
+        assert "room_code" not in columns
     assert "room_code" in indexed_leading_columns(engine, "games")
 
 

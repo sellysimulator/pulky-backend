@@ -4,13 +4,18 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from app.core.enums import Incoterm
+from app.core.enums import IncotermTier
 from app.core.insurance import refund_value
 from app.core.money import round_cents
 from app.core.records import FinalSettlement, Shipment
 from app.core.settlement import final_settlement
 
-EXW, CIP, DAP, DDP = Incoterm.EXW, Incoterm.CIP, Incoterm.DAP, Incoterm.DDP
+EXW, CIP, DAP, DDP = (
+    IncotermTier.EXW,
+    IncotermTier.CIP,
+    IncotermTier.DAP,
+    IncotermTier.DDP,
+)
 BASE, RETAIL, SALVAGE = 12.0, 30.0, 2.0
 
 
@@ -29,7 +34,9 @@ def settle(**over):
 
 
 def ship(qty, lost, cost, tier, day=1):
-    return Shipment(qty=qty, lost=lost, unit_cost=cost, incoterm=tier, shipped_day=day)
+    return Shipment(
+        qty=qty, lost=lost, unit_cost=cost, incoterm_tier=tier, shipped_day=day
+    )
 
 
 def test_returns_a_final_settlement():
@@ -170,7 +177,7 @@ def test_settlement_matches_the_spec_formula(
             sum(
                 x.lost
                 * refund_value(
-                    x.incoterm,
+                    x.incoterm_tier,
                     paid_unit_cost=x.unit_cost,
                     arrival_spot_price=BASE,
                     retail_price=RETAIL,

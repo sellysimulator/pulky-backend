@@ -14,7 +14,7 @@ from typing import Any, Protocol
 from app.core.calendar import weekday_of
 from app.core.config_models import GameConfig
 from app.core.engine import PulkyEngine
-from app.core.enums import WEEKDAYS, Incoterm, Phase
+from app.core.enums import WEEKDAYS, IncotermTier, Phase
 from app.core.kernels import weekday_multiplier
 from app.core.limits import MAX_CONSERVE_LOTS, MAX_ORDER, MAX_PEER_PRICE
 from app.core.money import round_cents
@@ -99,7 +99,7 @@ def _trim(engine: PulkyEngine, alias: str, decision: Decision, cash: float) -> D
     decision = dataclasses.replace(decision, conserve_lots=())
     if affordable(decision):
         return decision
-    decision = dataclasses.replace(decision, incoterm=Incoterm.EXW)
+    decision = dataclasses.replace(decision, incoterm_tier=IncotermTier.EXW)
     if affordable(decision):
         return decision
     return dataclasses.replace(
@@ -184,16 +184,16 @@ class _Insured:
     def decide(self, engine: PulkyEngine, alias: str) -> Decision:
         view, decision = _base(engine, alias)
         tiers = engine.config.insurance.tiers
-        tier = Incoterm.EXW
+        tier = IncotermTier.EXW
         for candidate, cfg in (
-            (Incoterm.DDP, tiers.ddp),
-            (Incoterm.DAP, tiers.dap),
-            (Incoterm.CIP, tiers.cip),
+            (IncotermTier.DDP, tiers.ddp),
+            (IncotermTier.DAP, tiers.dap),
+            (IncotermTier.CIP, tiers.cip),
         ):
             if cfg.enabled:
                 tier = candidate
                 break
-        decision = dataclasses.replace(decision, incoterm=tier)
+        decision = dataclasses.replace(decision, incoterm_tier=tier)
         return _finish(engine, alias, view, decision)
 
 

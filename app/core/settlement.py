@@ -34,7 +34,7 @@ def final_settlement(
             sum(
                 shipment.lost
                 * refund_value(
-                    shipment.incoterm,
+                    shipment.incoterm_tier,
                     paid_unit_cost=shipment.unit_cost,
                     arrival_spot_price=base_price,
                     retail_price=retail_price,

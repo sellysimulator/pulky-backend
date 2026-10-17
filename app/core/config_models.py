@@ -7,8 +7,13 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.defaults import DEFAULT_CONFIG, PLAYER_CONFIG_KEYS
-from app.core.enums import WEEKDAYS, Incoterm, Weekday
-from app.core.insurance import TierTerms, break_even_fee, fee_ratio
+from app.core.enums import WEEKDAYS, IncotermTier, Weekday
+from app.core.insurance import (
+    INSURED_TIERS,
+    InsuredTierTerms,
+    break_even_fee,
+    fee_ratio,
+)
 from app.core.limits import (
     LIMITS,
     MAX_DAYS,
@@ -91,22 +96,22 @@ class TransportConfig(BaseModel):
     loss_fraction: float
 
 
-class TierConfig(BaseModel):
+class InsuredTierConfig(BaseModel):
     model_config = _FROZEN
     enabled: bool
     fee: float
 
 
-class InsuranceTiers(BaseModel):
+class InsuredTiersConfig(BaseModel):
     model_config = _FROZEN
-    cip: TierConfig
-    dap: TierConfig
-    ddp: TierConfig
+    cip: InsuredTierConfig
+    dap: InsuredTierConfig
+    ddp: InsuredTierConfig
 
 
 class InsuranceConfig(BaseModel):
     model_config = _FROZEN
-    tiers: InsuranceTiers
+    tiers: InsuredTiersConfig
     target_margin: float
     reference_shipment: int
 
@@ -276,12 +281,12 @@ class GameConfig(BaseModel):
             raise ConfigError(first.field, first.message)
         return result.config
 
-    def tier_terms(self) -> dict[Incoterm, TierTerms]:
+    def tier_terms(self) -> dict[IncotermTier, InsuredTierTerms]:
         tiers = self.insurance.tiers
         return {
-            Incoterm.CIP: TierTerms(tiers.cip.enabled, tiers.cip.fee),
-            Incoterm.DAP: TierTerms(tiers.dap.enabled, tiers.dap.fee),
-            Incoterm.DDP: TierTerms(tiers.ddp.enabled, tiers.ddp.fee),
+            IncotermTier.CIP: InsuredTierTerms(tiers.cip.enabled, tiers.cip.fee),
+            IncotermTier.DAP: InsuredTierTerms(tiers.dap.enabled, tiers.dap.fee),
+            IncotermTier.DDP: InsuredTierTerms(tiers.ddp.enabled, tiers.ddp.fee),
         }
 
 
@@ -446,7 +451,7 @@ def config_warnings(config: GameConfig) -> list[FieldIssue]:
             )
         )
     terms = config.tier_terms()
-    for tier in (Incoterm.CIP, Incoterm.DAP, Incoterm.DDP):
+    for tier in INSURED_TIERS:
         if not terms[tier].enabled:
             continue
         break_even = break_even_fee(

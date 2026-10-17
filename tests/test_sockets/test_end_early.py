@@ -81,7 +81,9 @@ async def test_the_host_ends_a_running_game_and_everyone_is_told(
     room = await world.room(game.code)
     engine = room_engine(room)
     finished = got[4][2]
-    assert {k: v for k, v in finished.items() if k != "seq"} == norm(engine.results())
+    assert finished["game_id"] == room["game_id"]
+    body = {k: v for k, v in finished.items() if k not in ("seq", "game_id")}
+    assert body == norm(engine.results())
     assert finished["ended_early"] is True
     assert finished["days_played"] == 2  # the open day was discarded
     assert sorted(finished["stats"]["players"]) == ["P1", "P2", "P3"]

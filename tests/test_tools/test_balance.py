@@ -13,7 +13,7 @@ import pytest
 from app.core.calendar import weekday_of
 from app.core.config_models import GameConfig
 from app.core.engine import PulkyEngine
-from app.core.enums import Incoterm, Phase, Weekday
+from app.core.enums import IncotermTier, Phase, Weekday
 from app.core.kernels import weekday_multiplier
 from app.core.limits import MAX_ORDER
 from app.core.records import Decision, PeerBuy, PeerSell
@@ -144,7 +144,7 @@ def test_naive_orders_the_same_every_open_day_without_extras() -> None:
     e = play_game(GameConfig.default(), STRATEGIES["naive"], 4, seed=3)
     for rec in e.records("P2"):
         assert rec.order_futures == 0
-        assert rec.incoterm == Incoterm.EXW
+        assert rec.incoterm_tier == IncotermTier.EXW
         assert rec.conserve_lots == ()
         assert rec.cooperate is False
         assert rec.peer_buy is None and rec.peer_sell is None
@@ -211,7 +211,7 @@ def test_order_up_to_orders_the_difference() -> None:
     target = own_demand(e, "P1", 1) + own_demand(e, "P1", 2)
     d = STRATEGIES["order_up_to"].decide(e, "P1")
     assert d.order_spot == halfup(target)
-    assert d.incoterm == Incoterm.EXW and d.order_futures == 0
+    assert d.incoterm_tier == IncotermTier.EXW and d.order_futures == 0
     assert d.conserve_lots == () and d.cooperate is False
 
 
@@ -281,18 +281,18 @@ def test_hedger_never_buys_futures_after_the_window_closes() -> None:
 @pytest.mark.parametrize(
     ("tiers", "expected"),
     [
-        ({}, Incoterm.DDP),
-        ({"ddp": False}, Incoterm.DAP),
-        ({"ddp": False, "dap": False}, Incoterm.CIP),
-        ({"ddp": False, "dap": False, "cip": False}, Incoterm.EXW),
+        ({}, IncotermTier.DDP),
+        ({"ddp": False}, IncotermTier.DAP),
+        ({"ddp": False, "dap": False}, IncotermTier.CIP),
+        ({"ddp": False, "dap": False, "cip": False}, IncotermTier.EXW),
     ],
 )
 def test_insured_uses_most_protective_enabled_tier(
-    tiers: dict[str, bool], expected: Incoterm
+    tiers: dict[str, bool], expected: IncotermTier
 ) -> None:
     patches = {f"insurance.tiers.{t}.enabled": on for t, on in tiers.items()}
     e = start(make_config(**patches))
-    assert STRATEGIES["insured"].decide(e, "P1").incoterm == expected
+    assert STRATEGIES["insured"].decide(e, "P1").incoterm_tier == expected
 
 
 def test_coop_cooperates() -> None:

@@ -109,8 +109,14 @@ def start(room: dict, next_seq: Callable[[dict], int]) -> list[Emit]:
 
 def _finish_emits(room: dict, sid: str, next_seq: Callable[[dict], int]) -> list[Emit]:
     engine = _require_engine(room)
-    emits = [Emit(sid, "game_finished", {"seq": next_seq(room), **engine.results()})]
-    if room.get("game_id"):
+    emits = [
+        Emit(
+            sid,
+            "game_finished",
+            {"seq": next_seq(room), "game_id": room["game_id"], **engine.results()},
+        )
+    ]
+    if room.get("persisted"):
         emits.append(
             Emit(
                 sid,

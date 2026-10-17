@@ -16,6 +16,10 @@ class StateBackend(Protocol):
 
     async def setex(self, key: str, ttl: int, value: str) -> object: ...
 
+    async def set(self, key: str, value: str, *, ex: int, nx: bool) -> object:
+        """With ``nx``, a truthy result only when the key was absent and is now set."""
+        ...
+
     async def delete(self, *keys: str) -> int: ...
 
     async def exists(self, key: str) -> int: ...
@@ -66,6 +70,11 @@ class InMemoryBackend:
     async def setex(self, key: str, ttl: int, value: str) -> bool:
         self._store[key] = (self._clock() + ttl if ttl else None, value)
         return True
+
+    async def set(self, key: str, value: str, *, ex: int, nx: bool) -> bool | None:
+        if nx and self._live(key) is not None:
+            return None
+        return await self.setex(key, ex, value)
 
     async def delete(self, *keys: str) -> int:
         removed = 0

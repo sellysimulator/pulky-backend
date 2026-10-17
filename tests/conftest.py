@@ -110,6 +110,11 @@ class FakeRedis:
         self._data[key] = (self._clock.now + ttl if ttl else None, value)
         return True
 
+    async def set(self, key: str, value: str, *, ex: int, nx: bool) -> bool | None:
+        if nx and self._live(key) is not None:
+            return None
+        return await self.setex(key, ex, value)
+
     async def delete(self, *keys: str) -> int:
         removed = 0
         for key in keys:

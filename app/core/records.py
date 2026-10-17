@@ -4,7 +4,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from app.core.enums import Incoterm, TradeSide, Weekday
+from app.core.enums import IncotermTier, TradeSide, Weekday
 from app.core.limits import MAX_CONSERVE_LOTS, MAX_ORDER, MAX_PEER_PRICE
 from app.core.money import format_money, format_number, round_cents
 
@@ -159,7 +159,7 @@ class Decision:
     day: int
     order_spot: int
     order_futures: int
-    incoterm: Incoterm
+    incoterm_tier: IncotermTier
     conserve_lots: tuple[str, ...]
     cooperate: bool
     peer_buy: PeerBuy | None = None
@@ -167,14 +167,14 @@ class Decision:
 
     @classmethod
     def zero(cls, day: int) -> "Decision":
-        return cls(day, 0, 0, Incoterm.EXW, (), False, None, None)
+        return cls(day, 0, 0, IncotermTier.EXW, (), False, None, None)
 
     def to_payload(self) -> dict:
         return {
             "day": self.day,
             "order_spot": self.order_spot,
             "order_futures": self.order_futures,
-            "incoterm": self.incoterm.value,
+            "incoterm_tier": self.incoterm_tier.value,
             "conserve_lots": list(self.conserve_lots),
             "cooperate": self.cooperate,
             "peer_buy": None if self.peer_buy is None else self.peer_buy.to_payload(),
@@ -189,7 +189,7 @@ class Decision:
             data["day"],
             data["order_spot"],
             data["order_futures"],
-            Incoterm(data["incoterm"]),
+            IncotermTier(data["incoterm_tier"]),
             tuple(data["conserve_lots"]),
             data["cooperate"],
             _opt_buy(data["peer_buy"]),
@@ -201,7 +201,7 @@ _FIELDS = (
     "day",
     "order_spot",
     "order_futures",
-    "incoterm",
+    "incoterm_tier",
     "conserve_lots",
     "cooperate",
     "peer_buy",
@@ -224,7 +224,7 @@ def _readable(data: object) -> bool:
         _is_int(data["day"])
         and _is_int(data["order_spot"])
         and _is_int(data["order_futures"])
-        and isinstance(data["incoterm"], str)
+        and isinstance(data["incoterm_tier"], str)
         and isinstance(data["conserve_lots"], list)
         and all(isinstance(x, str) for x in data["conserve_lots"])
         and isinstance(data["cooperate"], bool)
@@ -260,7 +260,7 @@ def parse_decision(data: object) -> Decision:
         raise InvalidDecision(MSG_UNREADABLE)
     assert isinstance(data, dict)
     try:
-        incoterm = Incoterm(data["incoterm"])
+        incoterm_tier = IncotermTier(data["incoterm_tier"])
     except ValueError:
         raise InvalidDecision(MSG_TIER_UNAVAILABLE) from None
     for key in ("order_spot", "order_futures"):
@@ -285,7 +285,7 @@ def parse_decision(data: object) -> Decision:
         data["day"],
         data["order_spot"],
         data["order_futures"],
-        incoterm,
+        incoterm_tier,
         tuple(lots),
         data["cooperate"],
         (
@@ -311,7 +311,7 @@ class Shipment:
     qty: int
     lost: int
     unit_cost: float
-    incoterm: Incoterm
+    incoterm_tier: IncotermTier
     shipped_day: int
 
     def to_payload(self) -> dict:
@@ -319,7 +319,7 @@ class Shipment:
             "qty": self.qty,
             "lost": self.lost,
             "unit_cost": self.unit_cost,
-            "incoterm": self.incoterm.value,
+            "incoterm_tier": self.incoterm_tier.value,
             "shipped_day": self.shipped_day,
         }
 
@@ -329,7 +329,7 @@ class Shipment:
             data["qty"],
             data["lost"],
             data["unit_cost"],
-            Incoterm(data["incoterm"]),
+            IncotermTier(data["incoterm_tier"]),
             data["shipped_day"],
         )
 
@@ -343,7 +343,7 @@ class DayRecord:
     weekday: Weekday
     order_spot: int
     order_futures: int
-    incoterm: Incoterm
+    incoterm_tier: IncotermTier
     conserve_lots: tuple[str, ...]
     lots_conserved: int
     cooperate: bool
@@ -396,7 +396,7 @@ class DayRecord:
         out: dict[str, Any] = {}
         for name in self.__dataclass_fields__:
             value = getattr(self, name)
-            if isinstance(value, (Weekday, Incoterm)):
+            if isinstance(value, (Weekday, IncotermTier)):
                 value = value.value
             elif name == "conserve_lots":
                 value = list(value)
@@ -411,7 +411,7 @@ class DayRecord:
     def from_payload(cls, data: dict) -> "DayRecord":
         values = {name: data[name] for name in cls.__dataclass_fields__}
         values["weekday"] = Weekday(values["weekday"])
-        values["incoterm"] = Incoterm(values["incoterm"])
+        values["incoterm_tier"] = IncotermTier(values["incoterm_tier"])
         values["conserve_lots"] = tuple(values["conserve_lots"])
         values["peer_buy"] = _opt_buy(values["peer_buy"])
         values["peer_sell"] = _opt_sell(values["peer_sell"])

@@ -47,7 +47,7 @@ ROOM_BANNED_KEYS: tuple[str, ...] = (
     "futures_book",
     "order_spot",
     "order_futures",
-    "incoterm",
+    "incoterm_tier",
     "conserve_lots",
     "allocated_spot",
     "futures_filled",

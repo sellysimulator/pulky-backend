@@ -57,15 +57,11 @@ def results_by_id(public_id: str, db: Session = Depends(get_db)) -> dict:
     return results_service.results_response(_stored(db, game))
 
 
-@router.get("/games/{code}/results", response_model=ResultsResponse)
-def results_by_code(code: str, db: Session = Depends(get_db)) -> dict:
-    game = db_service.find_latest_game_by_room_code(db, code)
-    return results_service.results_response(_stored(db, game))
-
-
 async def _may_export(
     db: Session, game: Game, secret: str | None, authorization: str | None
 ) -> bool:
+    # The secret is the live room's; the game id check keeps a later room that reuses
+    # the code from authorising an export of this game.
     room = await state_service.get_state_service().get_room(game.room_code)
     if (
         room is not None
@@ -86,15 +82,15 @@ async def _may_export(
     return user is not None and user.id == game.host_user_id
 
 
-@router.get("/games/{code}/export", response_model=None)
+@router.get("/games/id/{public_id}/export", response_model=None)
 async def export_game(
-    code: str,
+    public_id: str,
     format: Literal["csv", "json"] = Query(...),
     x_host_secret: str | None = Header(None),
     authorization: str | None = Header(None),
     db: Session = Depends(get_db),
 ) -> Response:
-    game = db_service.find_latest_game_by_room_code(db, code)
+    game = db_service.find_game_by_public_id(db, public_id)
     if game is None:
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     if not await _may_export(db, game, x_host_secret, authorization):
