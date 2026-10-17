@@ -11,6 +11,7 @@ import logging
 import re
 import threading
 import time
+import uuid
 from collections.abc import Callable, Iterator
 from datetime import datetime
 from decimal import Decimal
@@ -24,13 +25,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config_models import GameConfig
 from app.core.defaults import DEFAULT_CONFIG
 from app.core.engine import PulkyEngine
-from app.core.enums import Incoterm, TradeSide
+from app.core.enums import IncotermTier, TradeSide
 from app.core.records import Decision, PeerBuy, PeerSell
 from app.models.game import Game
 from app.services.db_service import (
     StoredGame,
     find_game_by_public_id,
-    find_latest_game_by_room_code,
     load_stored_game,
     persist_finished_game,
 )
@@ -111,20 +111,20 @@ def play_peer_game(
     for day in range(1, last + 1):
         if day == 1:
             plan = {
-                "P1": Decision(1, 10, 0, Incoterm.CIP, ("L0",), False),
-                "P2": Decision(1, 30, 0, Incoterm.DAP, (), True),
+                "P1": Decision(1, 10, 0, IncotermTier.CIP, ("L0",), False),
+                "P2": Decision(1, 30, 0, IncotermTier.DAP, (), True),
             }
         elif day == 2 and peer_enabled:
             plan = {
                 "P1": Decision(
-                    2, 40, 0, Incoterm.EXW, (), False, PeerBuy(20.0, 0), None
+                    2, 40, 0, IncotermTier.EXW, (), False, PeerBuy(20.0, 0), None
                 ),
                 "P2": Decision(
-                    2, 0, 0, Incoterm.EXW, (), False, None, PeerSell(15.0, 100, 25)
+                    2, 0, 0, IncotermTier.EXW, (), False, None, PeerSell(15.0, 100, 25)
                 ),
             }
         elif day == 2:
-            plan = {"P1": Decision(2, 40, 0, Incoterm.EXW, (), False)}
+            plan = {"P1": Decision(2, 40, 0, IncotermTier.EXW, (), False)}
         else:
             plan = {}
         for alias in engine.aliases:
@@ -142,7 +142,7 @@ def play_big_game(players: int = 12, days: int = 20) -> PulkyEngine:
     for day in range(1, days + 1):
         for alias in engine.aliases:
             spot = 8 if day <= days - 3 else 0  # spot orders close before the end
-            engine.submit(alias, Decision(day, spot, 0, Incoterm.EXW, (), False))
+            engine.submit(alias, Decision(day, spot, 0, IncotermTier.EXW, (), False))
         engine.resolve_day()
     return engine
 
@@ -160,8 +160,10 @@ def make_room(
     started_at: str = STARTED,
     finished_at: str = FINISHED,
     host_name: str = "Ms. Ruiz",
+    game_id: str | None = None,
 ) -> dict[str, Any]:
-    """A finished room document. Default: every player and the host are guests."""
+    """A finished room document with the game id it got when it finished.
+    Default: every player and the host are guests."""
     room = new_room_document(
         room_code=code,
         config=engine.config.to_dict(),
@@ -173,6 +175,7 @@ def make_room(
     room["state"] = "finished"
     room["started_at"] = started_at
     room["finished_at"] = finished_at
+    room["game_id"] = game_id or uuid.uuid4().hex
     room["host_identity"] = host_identity or guest_id(9999)
     room["seed"] = engine.seed
     room["participants"] = {
@@ -328,7 +331,7 @@ def test_ac1_a_finished_room_is_written_as_specified(
         "market_days": 7,
     }
     (g,) = rows(db_session, "SELECT * FROM games")
-    assert g["public_id"] == gid
+    assert g["public_id"] == gid == room["game_id"]
     assert g["room_code"] == "ABC234"
     assert g["host_display_name"] == "Ms. Ruiz"
     assert g["rng_seed"] == peer_engine.seed
@@ -408,7 +411,7 @@ def test_ac1_player_days_and_market_days_match_the_engine(
         assert [r["day"] for r in stored_days] == [r.day for r in records]
         for row, rec in zip(stored_days, records, strict=True):
             assert row["weekday"] == str(rec.weekday)
-            assert row["incoterm"] == str(rec.incoterm)
+            assert row["incoterm"] == str(rec.incoterm_tier)
             assert row["sold"] == rec.sold and row["demand"] == rec.demand
             assert num(row["profit"]) == pytest.approx(rec.profit, abs=0.005)
     market = peer_engine.market_history()
@@ -609,6 +612,20 @@ def test_a_room_that_is_not_finished_is_refused_with_an_error_log(
             assert secret not in record.getMessage()
 
 
+def test_a_finished_room_without_a_game_id_is_refused_with_an_error_log(
+    peer_engine: PulkyEngine,
+    factory: Callable[[], Session],
+    db_session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    room = make_room(peer_engine)
+    room["game_id"] = None
+    caplog.set_level(logging.DEBUG)
+    assert persist_finished_game(room, factory) is None
+    assert any(r.levelno >= logging.ERROR for r in caplog.records)
+    assert table_counts(db_session) == dict.fromkeys(TABLES, 0)
+
+
 # ------------------------------------------------------------- AC 4, FM 1, 4
 
 
@@ -636,7 +653,7 @@ def test_ac4_fm4_insert_count_does_not_grow_with_players_or_days(
     assert len(rec.inserts) <= 5 + 5 + 4
 
 
-def test_fm1_raw_inserts_never_name_the_timestamp_columns(
+def test_fm1_every_persisted_row_carries_its_timestamps(
     peer_engine: PulkyEngine,
     factory: Callable[[], Session],
     db_engine: Engine,
@@ -653,11 +670,15 @@ def test_fm1_raw_inserts_never_name_the_timestamp_columns(
     finally:
         rec.stop()
     assert {insert_table(s) for s in rec.inserts} >= set(TABLES)
-    # the five persistence tables are raw text() INSERTs; users go through the ORM
-    for statement in rec.inserts:
-        if insert_table(statement) in TABLES:
-            assert "created_at" not in statement.lower()
-            assert "updated_at" not in statement.lower()
+    # Core INSERTs on the mapped tables apply the models' timestamp defaults
+    for table in TABLES:
+        missing = db_session.execute(
+            text(
+                f"SELECT COUNT(*) FROM `{table}` "
+                "WHERE created_at IS NULL OR updated_at IS NULL"
+            )
+        ).scalar()
+        assert missing == 0, table
 
 
 # ---------------------------------------------------------------------- AC 9
@@ -729,7 +750,7 @@ def test_fm6_a_stored_and_reloaded_game_equals_the_engine_field_for_field(
     assert p1[1].peer_buy == PeerBuy(20.0, 0) and p2[1].peer_sell is not None
     assert p1[1].peer_trades and p2[1].peer_trades
     assert any(r.refrigeration_failure for r in p1)
-    assert {r.incoterm for r in p1} >= {Incoterm.CIP, Incoterm.EXW}
+    assert {r.incoterm_tier for r in p1} >= {IncotermTier.CIP, IncotermTier.EXW}
     assert g.market[0].peer_avg_price is None
     assert g.market[1].peer_avg_price is not None
 
@@ -819,25 +840,19 @@ def test_find_game_by_public_id(
     assert find_game_by_public_id(db_session, "0" * 32) is None
 
 
-def test_ac8_find_latest_game_by_room_code_returns_the_most_recent(
+def test_ac8_two_games_under_one_reissued_code_are_kept_apart_by_id(
     peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
 ) -> None:
-    later = persist(
-        make_room(
-            peer_engine,
-            started_at="2026-10-13T09:00:00Z",
-            finished_at="2026-10-13T10:00:00Z",
-        ),
-        factory,
-        db_session,
-    )
-    earlier = persist(make_room(peer_engine), factory, db_session)  # inserted last
-    assert earlier != later and count(db_session, "games") == 2
+    """A room code is reissued once its live room expires (spec 11.3): the stored
+    games, even with the same start time, are told apart only by their ids."""
+    first = persist(make_room(peer_engine, host_name="First"), factory, db_session)
+    second = persist(make_room(peer_engine, host_name="Second"), factory, db_session)
+    assert first != second and count(db_session, "games") == 2
     db_session.rollback()
-    for code in ("ABC234", "abc234"):
-        game = find_latest_game_by_room_code(db_session, code)
-        assert game is not None and game.public_id == later
-    assert find_latest_game_by_room_code(db_session, "ZZZ999") is None
+    for public_id, host in ((first, "First"), (second, "Second")):
+        game = find_game_by_public_id(db_session, public_id)
+        assert game is not None and game.room_code == "ABC234"
+        assert game.host_display_name == host
 
 
 # --------------------------------------------------------------- user stats

@@ -7,11 +7,11 @@ import pytest
 from app.core.config_models import GameConfig
 from app.core.defaults import DEFAULT_CONFIG
 from app.core.engine import PulkyEngine
-from app.core.enums import Incoterm, Phase
+from app.core.enums import IncotermTier, Phase
 from app.core.money import round_cents
 from app.core.records import Decision
 
-EXW = Incoterm.EXW
+EXW = IncotermTier.EXW
 NAMES = [
     "Don Agave",
     "La Chula",
@@ -68,7 +68,7 @@ def D(day, spot=0, fut=0, tier=EXW, conserve=(), coop=False, buy=None, sell=None
     return Decision(day, spot, fut, tier, tuple(conserve), coop, buy, sell)
 
 
-CIP, DAP, DDP = Incoterm.CIP, Incoterm.DAP, Incoterm.DDP
+CIP, DAP, DDP = IncotermTier.CIP, IncotermTier.DAP, IncotermTier.DDP
 
 
 def short(**over):

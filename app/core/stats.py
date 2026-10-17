@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 
-from app.core.enums import Incoterm
+from app.core.enums import IncotermTier
 from app.core.money import round_cents
 from app.core.records import DayRecord, FinalSettlement, MarketDay
 from app.core.rng import stream
@@ -50,9 +50,9 @@ def _player_stats(
     cost_peer = round_cents(sum(r.cost_peer for r in recs))
     revenue_peer = round_cents(sum(r.revenue_peer for r in recs))
     reputations = [r.reputation_end for r in recs]
-    incoterm_days = {tier.value: 0 for tier in Incoterm}
+    incoterm_tier_days = {tier.value: 0 for tier in IncotermTier}
     for r in recs:
-        incoterm_days[r.incoterm.value] += 1
+        incoterm_tier_days[r.incoterm_tier.value] += 1
     return {
         "alias": alias,
         "display_name": display_name,
@@ -101,7 +101,7 @@ def _player_stats(
         "days_cooperated": sum(1 for r in recs if r.cooperate),
         "peak_stock": max((r.closing_stock for r in recs), default=0),
         "peak_backlog": max((r.backlog_end for r in recs), default=0),
-        "incoterm_days": incoterm_days,
+        "incoterm_tier_days": incoterm_tier_days,
         "series": {
             "delivered": [r.delivered for r in recs],
             "peer_bought": [r.peer_bought for r in recs],

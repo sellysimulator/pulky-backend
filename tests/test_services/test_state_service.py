@@ -89,6 +89,9 @@ class SpyBackend:
     async def setex(self, key: str, ttl: int, value: str) -> Any:
         return await self.inner.setex(key, ttl, value)
 
+    async def set(self, key: str, value: str, *, ex: int, nx: bool) -> Any:
+        return await self.inner.set(key, value, ex=ex, nx=nx)
+
     async def delete(self, *keys: str) -> int:
         return await self.inner.delete(*keys)
 
@@ -561,6 +564,29 @@ async def test_create_room_gives_up_after_ten_collisions(
         await svc.create_room({}, "Second")
     assert len(calls) == 10
     assert (await svc.get_room("ABC234"))["host_secret"] == first["host_secret"]
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_creations_drawing_one_code_never_share_it(
+    backend: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The write is set-if-absent: an existence check that both creations pass (as two
+    racing processes would) cannot let the second overwrite the first."""
+
+    class RacingBackend(SpyBackend):
+        async def exists(self, key: str) -> int:
+            return 0
+
+    svc = StateService(RacingBackend(backend))
+    _force_codes(monkeypatch, ["ABC234", "ABC234", "XYZ789"])
+    first, second = await asyncio.gather(
+        svc.create_room({}, "First"), svc.create_room({}, "Second")
+    )
+    assert {first["room_code"], second["room_code"]} == {"ABC234", "XYZ789"}
+    for room in (first, second):
+        stored = await svc.get_room(room["room_code"])
+        assert stored is not None
+        assert stored["host_secret"] == room["host_secret"]
 
 
 # --- next_seq ------------------------------------------------------------------

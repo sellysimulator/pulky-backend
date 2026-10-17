@@ -2,12 +2,12 @@
 
 import pytest
 
-from app.core.enums import Incoterm
+from app.core.enums import IncotermTier
 from app.core.insurance import (
+    INCOTERM_TIER_LABELS,
+    INCOTERM_TIERS,
     REFUND_BASIS,
-    TIER_LABELS,
-    TIER_ORDER,
-    TierTerms,
+    InsuredTierTerms,
     break_even_fee,
     fee_from_margin,
     fee_ratio,
@@ -17,12 +17,17 @@ from app.core.insurance import (
     tier_fee,
 )
 
-EXW, CIP, DAP, DDP = Incoterm.EXW, Incoterm.CIP, Incoterm.DAP, Incoterm.DDP
+EXW, CIP, DAP, DDP = (
+    IncotermTier.EXW,
+    IncotermTier.CIP,
+    IncotermTier.DAP,
+    IncotermTier.DDP,
+)
 
 DEFAULT_TIERS = {
-    CIP: TierTerms(enabled=True, fee=0.40),
-    DAP: TierTerms(enabled=True, fee=0.40),
-    DDP: TierTerms(enabled=True, fee=0.99),
+    CIP: InsuredTierTerms(enabled=True, fee=0.40),
+    DAP: InsuredTierTerms(enabled=True, fee=0.40),
+    DDP: InsuredTierTerms(enabled=True, fee=0.99),
 }
 KW = dict(
     failure_probability=0.1,
@@ -46,11 +51,11 @@ ROW_KEYS = {
 
 
 def test_tier_order():
-    assert tuple(TIER_ORDER) == (EXW, CIP, DAP, DDP)
+    assert tuple(INCOTERM_TIERS) == (EXW, CIP, DAP, DDP)
 
 
 def test_tier_labels_verbatim():
-    assert TIER_LABELS == {
+    assert INCOTERM_TIER_LABELS == {
         EXW: "EXW — you carry the risk",
         CIP: "CIP + blockchain — refund what you paid",
         DAP: "DAP + blockchain — refund at market price",
@@ -83,7 +88,7 @@ def test_tier_fee_enabled_tiers():
 @pytest.mark.parametrize("tier", [CIP, DAP, DDP])
 def test_tier_fee_disabled_raises(tier):
     tiers = dict(DEFAULT_TIERS)
-    tiers[tier] = TierTerms(enabled=False, fee=0.5)
+    tiers[tier] = InsuredTierTerms(enabled=False, fee=0.5)
     with pytest.raises(ValueError):
         tier_fee(tier, tiers)
 
@@ -112,9 +117,9 @@ def test_plan_rows_default():
     assert [r["tier"] for r in rows] == ["exw", "cip", "dap", "ddp"]
     assert all(set(r) == ROW_KEYS for r in rows)
     by = {r["tier"]: r for r in rows}
-    for tier in TIER_ORDER:
+    for tier in INCOTERM_TIERS:
         r = by[str(tier)]
-        assert r["label"] == TIER_LABELS[tier]
+        assert r["label"] == INCOTERM_TIER_LABELS[tier]
         assert r["refund_basis"] == REFUND_BASIS[tier]
     assert by["exw"]["enabled"] is True
     assert by["exw"]["fee_per_unit"] == 0
@@ -129,7 +134,7 @@ def test_plan_rows_default():
 
 def test_plan_rows_disabled_tier_keeps_stored_fee():
     tiers = dict(DEFAULT_TIERS)
-    tiers[DAP] = TierTerms(enabled=False, fee=0.77)
+    tiers[DAP] = InsuredTierTerms(enabled=False, fee=0.77)
     rows = {
         r["tier"]: r for r in plan_rows(tiers, today_spot_price=12, retail_price=30)
     }
@@ -163,9 +168,9 @@ def test_fm5_no_failure_odds_value_in_plan_rows():
     # spec 9.3: the secret p and L must never reach the player panel.
     p, loss = 0.137, 0.271
     tiers = {
-        CIP: TierTerms(enabled=True, fee=0.45),
-        DAP: TierTerms(enabled=False, fee=0.55),
-        DDP: TierTerms(enabled=True, fee=1.05),
+        CIP: InsuredTierTerms(enabled=True, fee=0.45),
+        DAP: InsuredTierTerms(enabled=False, fee=0.55),
+        DDP: InsuredTierTerms(enabled=True, fee=1.05),
     }
     # The calculator inputs are the only place p and L exist; plan_rows takes
     # neither, so no value in any row may equal them, whatever else is passed.

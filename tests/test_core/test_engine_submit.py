@@ -8,7 +8,7 @@ from app.core.calendar import order_windows
 from app.core.config_models import GameConfig
 from app.core.defaults import DEFAULT_CONFIG
 from app.core.engine import PulkyEngine
-from app.core.enums import Incoterm, Phase
+from app.core.enums import IncotermTier, Phase
 from app.core.limits import MAX_ORDER, MAX_PEER_PRICE
 from app.core.money import round_cents
 from app.core.records import (
@@ -27,7 +27,7 @@ from app.core.records import (
     msg_unaffordable,
 )
 
-EXW = Incoterm.EXW
+EXW = IncotermTier.EXW
 NAMES = [
     "Don Agave",
     "La Chula",
@@ -84,7 +84,7 @@ def D(day, spot=0, fut=0, tier=EXW, conserve=(), coop=False, buy=None, sell=None
     return Decision(day, spot, fut, tier, tuple(conserve), coop, buy, sell)
 
 
-CIP, DAP, DDP = Incoterm.CIP, Incoterm.DAP, Incoterm.DDP
+CIP, DAP, DDP = IncotermTier.CIP, IncotermTier.DAP, IncotermTier.DDP
 SPOT_CLOSED = "Spot orders closed: they would arrive after the game ends"
 FUTURES_CLOSED = "Futures closed: deliveries would arrive after the game ends"
 
@@ -156,7 +156,7 @@ def test_accepted_decision_is_stored_and_used_at_resolution():
     e.submit("P2", D(1))
     out = e.resolve_day()
     r = out.records["P1"]
-    assert (r.order_spot, r.order_futures, r.incoterm) == (7, 3, CIP)
+    assert (r.order_spot, r.order_futures, r.incoterm_tier) == (7, 3, CIP)
     assert r.cooperate is True and r.conserve_lots == ()
     assert r.outlay == round_cents(12 * 7 + 12 * 3 + (1.0 + 0.55) * 7)
 

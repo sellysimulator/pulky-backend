@@ -357,7 +357,11 @@ async def test_reconnect_after_the_end_receives_game_finished(world: World) -> N
     engine = game_service.load_engine(room)
     assert engine is not None
     assert by_event["your_state"]["full"] is True
-    finished = {k: v for k, v in by_event["game_finished"].items() if k != "seq"}
+    finished = {
+        k: v
+        for k, v in by_event["game_finished"].items()
+        if k not in ("seq", "game_id")
+    }
     assert finished == norm(engine.results())
     assert by_event["game_persisted"]["game_id"] == "pub-777"
     seqs = [by_event[e]["seq"] for e in names[1:]]

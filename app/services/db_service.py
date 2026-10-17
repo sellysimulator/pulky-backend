@@ -3,17 +3,15 @@
 import dataclasses
 import json
 import logging
-import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, cast
 
-from sqlalchemy import CursorResult, func, select, text
+from sqlalchemy import CursorResult, Table, insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.sql.elements import TextClause
 
 from app.core.config_models import GameConfig
 from app.core.engine import PulkyEngine
@@ -21,7 +19,7 @@ from app.core.enums import RoomState
 from app.core.money import round_cents
 from app.core.records import DayRecord, FinalSettlement, MarketDay
 from app.db import session as db_session_module
-from app.models.game import Game
+from app.models.game import Game, GameConfigRow, MarketDayRow, Participant, PlayerDay
 from app.services import stats_service
 
 logger = logging.getLogger(__name__)
@@ -80,21 +78,18 @@ _PARTICIPANT_FIELDS = (
     *_PARTICIPANT_STATS,
     *_SETTLEMENT_FIELDS,
 )
+# A DayRecord field stored under another column name (spec 13.5).
+_PLAYER_DAY_COLUMN_OF = {"incoterm_tier": "incoterm"}
 _PLAYER_DAY_COLUMNS = ("game_id", "alias", *_PLAYER_DAY_FIELDS)
 _MARKET_DAY_COLUMNS = ("game_id", *_MARKET_DAY_FIELDS)
 
-
-def _insert(table: str, columns: tuple[str, ...]) -> TextClause:
-    names = ", ".join(columns)
-    binds = ", ".join(f":{c}" for c in columns)
-    return text(f"INSERT INTO {table} ({names}) VALUES ({binds})")
-
-
-_INSERT_GAME = _insert("games", _GAME_FIELDS)
-_INSERT_CONFIG = _insert("game_configs", ("game_id", "config_schema_version", "config"))
-_INSERT_PARTICIPANT = _insert("participants", _PARTICIPANT_FIELDS)
-_INSERT_PLAYER_DAY = _insert("player_days", _PLAYER_DAY_COLUMNS)
-_INSERT_MARKET_DAY = _insert("market_days", _MARKET_DAY_COLUMNS)
+# Core statements on the mapped tables, not the ORM unit of work: one executemany per
+# table, column names checked against the models, and the models' defaults applied.
+_GAMES = cast(Table, Game.__table__)
+_GAME_CONFIGS = cast(Table, GameConfigRow.__table__)
+_PARTICIPANTS = cast(Table, Participant.__table__)
+_PLAYER_DAYS = cast(Table, PlayerDay.__table__)
+_MARKET_DAYS = cast(Table, MarketDayRow.__table__)
 
 
 class _Redacted(Exception):
@@ -149,14 +144,10 @@ def _is_guest(identity: str) -> bool:
     return identity.startswith(GUEST_PREFIX)
 
 
-def _dumps(value: Any) -> str:
-    return json.dumps(value, separators=(",", ":"))
-
-
-def _find_by_key(db: Session, room_code: str, started_at: datetime) -> Game | None:
+def _find_stored(db: Session, public_id: str) -> Game | None:
     return db.scalar(
         select(Game)
-        .where(Game.room_code == room_code, Game.started_at == started_at)
+        .where(Game.public_id == public_id)
         .execution_options(populate_existing=True)
     )
 
@@ -178,7 +169,9 @@ def _resolve_identity(
     return user.id, None
 
 
-def _write_game(db: Session, room: dict, engine: PulkyEngine) -> tuple[str, list[int]]:
+def _write_game(
+    db: Session, room: dict, engine: PulkyEngine, public_id: str
+) -> list[int]:
     code = room["room_code"]
     standings = engine.standings()
     settlements = engine.settlements()
@@ -199,9 +192,8 @@ def _write_game(db: Session, room: dict, engine: PulkyEngine) -> tuple[str, list
             db, room_players[alias]["identity"], engine.display_names[alias]
         )
 
-    public_id = uuid.uuid4().hex
     result = db.execute(
-        _INSERT_GAME,
+        insert(_GAMES),
         {
             "public_id": public_id,
             "room_code": code,
@@ -219,11 +211,11 @@ def _write_game(db: Session, room: dict, engine: PulkyEngine) -> tuple[str, list
     game_id = cast(CursorResult[Any], result).lastrowid
 
     db.execute(
-        _INSERT_CONFIG,
+        insert(_GAME_CONFIGS),
         {
             "game_id": game_id,
             "config_schema_version": CONFIG_SCHEMA_VERSION,
-            "config": _dumps(room["config"]),
+            "config": room["config"],
         },
     )
 
@@ -243,7 +235,7 @@ def _write_game(db: Session, room: dict, engine: PulkyEngine) -> tuple[str, list
         row.update({k: stats[k] for k in _PARTICIPANT_STATS})
         row.update({k: settlement[k] for k in _SETTLEMENT_FIELDS})
         participant_rows.append(row)
-    db.execute(_INSERT_PARTICIPANT, [_exact(r) for r in participant_rows])
+    db.execute(insert(_PARTICIPANTS), [_exact(r) for r in participant_rows])
 
     day_rows = []
     for alias in aliases:
@@ -251,13 +243,16 @@ def _write_game(db: Session, room: dict, engine: PulkyEngine) -> tuple[str, list
             payload = record.to_payload()
             payload["game_id"] = game_id
             payload["alias"] = alias
-            payload["conserve_lots"] = _dumps(payload["conserve_lots"])
-            payload["peer_trades"] = _dumps(payload["peer_trades"])
-            for key in ("peer_buy", "peer_sell"):
-                payload[key] = None if payload[key] is None else _dumps(payload[key])
-            day_rows.append(_exact({k: payload[k] for k in _PLAYER_DAY_COLUMNS}))
+            day_rows.append(
+                _exact(
+                    {
+                        _PLAYER_DAY_COLUMN_OF.get(k, k): payload[k]
+                        for k in _PLAYER_DAY_COLUMNS
+                    }
+                )
+            )
     if day_rows:
-        db.execute(_INSERT_PLAYER_DAY, day_rows)
+        db.execute(insert(_PLAYER_DAYS), day_rows)
 
     market_rows = []
     for day in market:
@@ -265,19 +260,23 @@ def _write_game(db: Session, room: dict, engine: PulkyEngine) -> tuple[str, list
         payload["game_id"] = game_id
         market_rows.append(_exact({k: payload[k] for k in _MARKET_DAY_COLUMNS}))
     if market_rows:
-        db.execute(_INSERT_MARKET_DAY, market_rows)
+        db.execute(insert(_MARKET_DAYS), market_rows)
 
-    user_ids = sorted({uid for uid, _ in resolved.values() if uid is not None})
-    return public_id, user_ids
+    return sorted({uid for uid, _ in resolved.values() if uid is not None})
 
 
 def persist_finished_game(
     room: dict, session_factory: Callable[[], Session] | None = None
 ) -> str | None:
-    """Write a finished room to MySQL once; the game's public_id, or None on failure."""
+    """Write a finished room to MySQL once, keyed by the game id it was given when it
+    finished (spec 11.3); that id, or None on failure."""
     code = str(room.get("room_code"))
     if room.get("state") != RoomState.FINISHED or not room.get("engine"):
         logger.error("room %s cannot be persisted: it is not finished", code)
+        return None
+    public_id = room.get("game_id")
+    if not isinstance(public_id, str) or not public_id:
+        logger.error("room %s cannot be persisted: it has no game id", code)
         return None
 
     db: Session | None = None
@@ -285,22 +284,19 @@ def persist_finished_game(
         engine = PulkyEngine.from_payload(
             room["engine"], GameConfig.from_dict(room["config"])
         )
-        started_at = _parse_room_time(room["started_at"])
         db = session_factory() if session_factory is not None else _default_session()
 
-        existing = _find_by_key(db, code, started_at)
-        if existing is not None:
-            return existing.public_id
+        if _find_stored(db, public_id) is not None:
+            return public_id
 
         try:
-            public_id, user_ids = _write_game(db, room, engine)
+            user_ids = _write_game(db, room, engine, public_id)
             db.commit()
         except IntegrityError:
             db.rollback()
-            found = _find_by_key(db, code, started_at)
-            if found is None:
+            if _find_stored(db, public_id) is None:
                 raise
-            return found.public_id
+            return public_id
 
         logger.info("room %s persisted as %s", code, public_id)
         try:
@@ -359,12 +355,17 @@ def _plain(name: str, value: Any) -> Any:
     return value
 
 
-def _row_payload(row: Mapping[Any, Any], fields: tuple[str, ...]) -> dict[str, Any]:
-    return {name: _plain(name, row[name]) for name in fields}
+def _row_payload(
+    row: Mapping[Any, Any],
+    fields: tuple[str, ...],
+    column_of: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    columns = column_of or {}
+    return {name: _plain(name, row[columns.get(name, name)]) for name in fields}
 
 
 def _day_record(row: Mapping[Any, Any]) -> DayRecord:
-    data = _row_payload(row, _PLAYER_DAY_FIELDS)
+    data = _row_payload(row, _PLAYER_DAY_FIELDS, _PLAYER_DAY_COLUMN_OF)
     data["conserve_lots"] = list(_json_value(row["conserve_lots"]) or [])
     data["peer_trades"] = list(_json_value(row["peer_trades"]) or [])
     data["peer_buy"] = _json_value(row["peer_buy"])
@@ -386,26 +387,41 @@ def _settlement(row: Mapping[Any, Any]) -> FinalSettlement:
     return FinalSettlement.from_payload(data)
 
 
-# Plain SELECTs, not the ORM: its DOUBLE type returns Decimal rounded to ten places,
-# which would break exact parity with the live statistics.
-_SELECT_PARTICIPANTS = text("SELECT * FROM participants WHERE game_id = :g ORDER BY id")
-_SELECT_PLAYER_DAYS = text(
-    "SELECT * FROM player_days WHERE game_id = :g ORDER BY day, id"
-)
-_SELECT_MARKET_DAYS = text("SELECT * FROM market_days WHERE game_id = :g ORDER BY day")
-_SELECT_CONFIG = text("SELECT config FROM game_configs WHERE game_id = :g")
-
-
 def load_stored_game(db: Session, game_pk: int) -> StoredGame:
     """One game read back as the exact inputs of ``build_stats``."""
-    params = {"g": game_pk}
     game = db.scalars(
         select(Game).where(Game.id == game_pk).execution_options(populate_existing=True)
     ).one()
-    config = db.execute(_SELECT_CONFIG, params).scalar_one()
-    participants = db.execute(_SELECT_PARTICIPANTS, params).mappings().all()
-    days = db.execute(_SELECT_PLAYER_DAYS, params).mappings().all()
-    market_rows = db.execute(_SELECT_MARKET_DAYS, params).mappings().all()
+    config = db.execute(
+        select(_GAME_CONFIGS.c.config).where(_GAME_CONFIGS.c.game_id == game_pk)
+    ).scalar_one()
+    participants = (
+        db.execute(
+            select(_PARTICIPANTS)
+            .where(_PARTICIPANTS.c.game_id == game_pk)
+            .order_by(_PARTICIPANTS.c.id)
+        )
+        .mappings()
+        .all()
+    )
+    days = (
+        db.execute(
+            select(_PLAYER_DAYS)
+            .where(_PLAYER_DAYS.c.game_id == game_pk)
+            .order_by(_PLAYER_DAYS.c.day, _PLAYER_DAYS.c.id)
+        )
+        .mappings()
+        .all()
+    )
+    market_rows = (
+        db.execute(
+            select(_MARKET_DAYS)
+            .where(_MARKET_DAYS.c.game_id == game_pk)
+            .order_by(_MARKET_DAYS.c.day)
+        )
+        .mappings()
+        .all()
+    )
 
     records: dict[str, list[DayRecord]] = {p["alias"]: [] for p in participants}
     for day_row in days:
@@ -435,19 +451,9 @@ def find_game_by_public_id(db: Session, public_id: str) -> Game | None:
     return db.scalar(select(Game).where(Game.public_id == public_id))
 
 
-def find_latest_game_by_room_code(db: Session, room_code: str) -> Game | None:
-    return db.scalar(
-        select(Game)
-        .where(func.upper(Game.room_code) == room_code.upper())
-        .order_by(Game.finished_at.desc(), Game.id.desc())
-        .limit(1)
-    )
-
-
 __all__ = [
     "StoredGame",
     "find_game_by_public_id",
-    "find_latest_game_by_room_code",
     "load_stored_game",
     "persist_finished_game",
 ]

@@ -22,13 +22,13 @@ from app.core.config_models import (
     FuturesConfig,
     GameConfig,
     InsuranceConfig,
-    InsuranceTiers,
+    InsuredTierConfig,
+    InsuredTiersConfig,
     PeakWindow,
     PeerMarketConfig,
     ReputationConfig,
     StockConfig,
     SupplierConfig,
-    TierConfig,
     TransportConfig,
     ValidationResult,
     config_public,
@@ -37,8 +37,8 @@ from app.core.config_models import (
     validate_config,
 )
 from app.core.defaults import DEFAULT_CONFIG, PLAYER_CONFIG_KEYS
-from app.core.enums import Incoterm
-from app.core.insurance import TierTerms, break_even_fee, fee_ratio
+from app.core.enums import IncotermTier
+from app.core.insurance import InsuredTierTerms, break_even_fee, fee_ratio
 from app.core.limits import (
     LIMITS,
     MAX_DAYS,
@@ -52,7 +52,7 @@ from app.core.limits import (
 )
 from app.core.money import format_money, format_number
 
-CIP, DAP, DDP = Incoterm.CIP, Incoterm.DAP, Incoterm.DDP
+CIP, DAP, DDP = IncotermTier.CIP, IncotermTier.DAP, IncotermTier.DDP
 
 # --------------------------------------------------------------------------- #
 # Helpers and the spec's tables, written out independently of the code.
@@ -458,8 +458,8 @@ def test_model_classes_are_exposed() -> None:
     assert isinstance(cfg.peer_market, PeerMarketConfig)
     assert isinstance(cfg.transport, TransportConfig)
     assert isinstance(cfg.insurance, InsuranceConfig)
-    assert isinstance(cfg.insurance.tiers, InsuranceTiers)
-    assert isinstance(cfg.insurance.tiers.cip, TierConfig)
+    assert isinstance(cfg.insurance.tiers, InsuredTiersConfig)
+    assert isinstance(cfg.insurance.tiers.cip, InsuredTierConfig)
 
 
 def test_peak_window_accepts_alias_and_field_name() -> None:
@@ -1544,19 +1544,19 @@ def test_tier_terms_for_defaults() -> None:
     terms = GameConfig.default().tier_terms()
     assert list(terms) == [CIP, DAP, DDP]
     assert terms == {
-        CIP: TierTerms(enabled=True, fee=0.55),
-        DAP: TierTerms(enabled=True, fee=0.55),
-        DDP: TierTerms(enabled=True, fee=1.39),
+        CIP: InsuredTierTerms(enabled=True, fee=0.55),
+        DAP: InsuredTierTerms(enabled=True, fee=0.55),
+        DDP: InsuredTierTerms(enabled=True, fee=1.39),
     }
-    assert Incoterm.EXW not in terms
+    assert IncotermTier.EXW not in terms
 
 
 def test_tier_terms_follow_the_config() -> None:
     terms = custom_config().tier_terms()
     assert terms == {
-        CIP: TierTerms(enabled=False, fee=0.3),
-        DAP: TierTerms(enabled=False, fee=0.5),
-        DDP: TierTerms(enabled=False, fee=1.2),
+        CIP: InsuredTierTerms(enabled=False, fee=0.3),
+        DAP: InsuredTierTerms(enabled=False, fee=0.5),
+        DDP: InsuredTierTerms(enabled=False, fee=1.2),
     }
     mixed = GameConfig.from_host_input(
         {
@@ -1565,9 +1565,9 @@ def test_tier_terms_follow_the_config() -> None:
             }
         }
     ).tier_terms()
-    assert mixed[CIP] == TierTerms(enabled=True, fee=0.1)
-    assert mixed[DAP] == TierTerms(enabled=True, fee=0.55)
-    assert mixed[DDP] == TierTerms(enabled=False, fee=2.0)
+    assert mixed[CIP] == InsuredTierTerms(enabled=True, fee=0.1)
+    assert mixed[DAP] == InsuredTierTerms(enabled=True, fee=0.55)
+    assert mixed[DDP] == InsuredTierTerms(enabled=False, fee=2.0)
 
 
 def test_format_helpers_agree_with_message_copy() -> None:

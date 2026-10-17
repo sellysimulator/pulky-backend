@@ -182,24 +182,22 @@ def test_public_surface_table_names() -> None:
 
 
 @pytest.mark.dbschema
-def test_same_room_code_and_start_is_rejected(
+def test_same_room_code_and_start_under_two_ids_are_both_stored(
     db_session: Session,
 ) -> None:  # noqa: F811
-    """Failure mode 4: the idempotency key (room_code, started_at)."""
+    """Failure mode 4: a game is keyed by its public_id alone; a reissued room code,
+    even at the same start, is another game."""
     db_session.execute(GAME_INSERT)
-    db_session.commit()
-    with pytest.raises(IntegrityError):
-        db_session.execute(
-            text(
-                str(GAME_INSERT).replace(
-                    "0123456789abcdef0123456789abcdef",
-                    "fedcba9876543210fedcba9876543210",
-                )
+    db_session.execute(
+        text(
+            str(GAME_INSERT).replace(
+                "0123456789abcdef0123456789abcdef",
+                "fedcba9876543210fedcba9876543210",
             )
         )
-        db_session.commit()
-    db_session.rollback()
-    assert count(db_session, "games") == 1
+    )
+    db_session.commit()
+    assert count(db_session, "games") == 2
 
 
 @pytest.mark.dbschema

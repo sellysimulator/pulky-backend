@@ -10,7 +10,7 @@ from app.core.config_models import GameConfig
 from app.core.defaults import DEFAULT_CONFIG
 from app.core.demand import market_lambda, shares
 from app.core.engine import PulkyEngine
-from app.core.enums import Incoterm, Phase, Weekday
+from app.core.enums import IncotermTier, Phase, Weekday
 from app.core.insurance import plan_rows
 from app.core.kernels import weekday_multiplier
 from app.core.lots import Cellar, Lot, quality_guide
@@ -24,7 +24,7 @@ from app.core.records import (
 )
 from app.core.stats import build_stats
 
-EXW = Incoterm.EXW
+EXW = IncotermTier.EXW
 NAMES = [
     "Don Agave",
     "La Chula",
@@ -81,7 +81,7 @@ def D(day, spot=0, fut=0, tier=EXW, conserve=(), coop=False, buy=None, sell=None
     return Decision(day, spot, fut, tier, tuple(conserve), coop, buy, sell)
 
 
-CIP, DAP, DDP = Incoterm.CIP, Incoterm.DAP, Incoterm.DDP
+CIP, DAP, DDP = IncotermTier.CIP, IncotermTier.DAP, IncotermTier.DDP
 
 PLAYER_KEYS = {
     "alias",
@@ -106,7 +106,7 @@ PLAYER_KEYS = {
     "market_share",
     "cash",
     "cumulative_profit",
-    "insurance_plans",
+    "tier_plans",
     "order_windows",
     "prefill_decision",
     "own_history",
@@ -179,7 +179,7 @@ HOST_PLAYER_BASE = {
     "cash",
     "fill_rate",
     "waste_rate",
-    "last_incoterm",
+    "last_incoterm_tier",
     "last_peer_bought",
     "last_peer_sold",
 }
@@ -307,7 +307,7 @@ def test_insurance_plans_come_from_the_tier_terms_and_todays_spot_price():
         today_spot_price=e.brief()["supplier"]["spot_price"],
         retail_price=30.0,
     )
-    assert e.player_view("P1")["insurance_plans"] == expected
+    assert e.player_view("P1")["tier_plans"] == expected
     assert [row["enabled"] for row in expected].count(False) >= 1
 
 
@@ -336,8 +336,20 @@ def test_in_transit_lists_shipments_front_first_and_skips_empty_ones():
     play(e, {"P1": D(3, 6, 0, CIP)})
     transit = e.player_view("P1")["in_transit"]
     assert transit == [
-        {"shipped_day": 1, "arrives_day": 4, "qty": 10, "lost": 0, "incoterm": "exw"},
-        {"shipped_day": 3, "arrives_day": 6, "qty": 6, "lost": 0, "incoterm": "cip"},
+        {
+            "shipped_day": 1,
+            "arrives_day": 4,
+            "qty": 10,
+            "lost": 0,
+            "incoterm_tier": "exw",
+        },
+        {
+            "shipped_day": 3,
+            "arrives_day": 6,
+            "qty": 6,
+            "lost": 0,
+            "incoterm_tier": "cip",
+        },
     ]
     assert e.host_view()["players"]["P1"]["in_transit_units"] == 16
 
@@ -347,7 +359,13 @@ def test_in_transit_keeps_a_shipment_that_lost_everything():
     e = start(config)
     play(e, {"P1": D(1, 10)})
     assert e.player_view("P1")["in_transit"] == [
-        {"shipped_day": 1, "arrives_day": 2, "qty": 0, "lost": 10, "incoterm": "exw"}
+        {
+            "shipped_day": 1,
+            "arrives_day": 2,
+            "qty": 0,
+            "lost": 10,
+            "incoterm_tier": "exw",
+        }
     ]
 
 
@@ -374,7 +392,7 @@ def test_prefill_is_the_zero_decision_on_day_one_and_the_last_decision_after():
         "day": 1,
         "order_spot": 0,
         "order_futures": 0,
-        "incoterm": "exw",
+        "incoterm_tier": "exw",
         "conserve_lots": [],
         "cooperate": False,
         "peer_buy": None,
@@ -386,7 +404,7 @@ def test_prefill_is_the_zero_decision_on_day_one_and_the_last_decision_after():
         "day": 2,
         "order_spot": 7,
         "order_futures": 5,
-        "incoterm": "cip",
+        "incoterm_tier": "cip",
         "conserve_lots": [],
         "cooperate": True,
         "peer_buy": buy.to_payload(),
@@ -412,7 +430,7 @@ def test_prefill_zeroes_orders_that_have_closed():
     assert e.day == 5  # futures closed from day 5, spot still open
     pre = e.player_view("P1")["prefill_decision"]
     assert pre["day"] == 5 and pre["order_futures"] == 0 and pre["order_spot"] == 2
-    assert pre["incoterm"] == "ddp" and pre["peer_buy"] == {
+    assert pre["incoterm_tier"] == "ddp" and pre["peer_buy"] == {
         "max_price": 9.0,
         "min_quality": 10,
     }
@@ -551,7 +569,7 @@ def test_host_view_day_one_keys_and_values():
         assert p["reputation"] == 0.5 and p["market_share"] == 0
         assert p["cumulative_profit"] == 0 and p["cash"] == 5000
         assert p["fill_rate"] is None and p["waste_rate"] is None
-        assert p["last_incoterm"] is None
+        assert p["last_incoterm_tier"] is None
         assert p["last_peer_bought"] is None and p["last_peer_sold"] is None
         assert p["own_history"] == []
     json.dumps(v)
@@ -586,11 +604,11 @@ def test_host_view_values_after_some_days():
         assert p["waste_rate"] == (
             spoiled / (sold + spoiled) if sold + spoiled else None
         )
-        assert p["last_incoterm"] == recs[-1].incoterm.value
+        assert p["last_incoterm_tier"] == recs[-1].incoterm_tier.value
         assert p["last_peer_bought"] == recs[-1].peer_bought
         assert p["last_peer_sold"] == recs[-1].peer_sold
         assert p["own_history"] == [r.to_payload() for r in recs]
-    assert v["players"]["P1"]["last_incoterm"] == "ddp"
+    assert v["players"]["P1"]["last_incoterm_tier"] == "ddp"
     assert v["players"]["P1"]["open_futures_units"] == 6
     assert v["public_history"] == [e.public_results(1), e.public_results(2)]
     assert v["market_history"] == [m.to_payload() for m in e.market_history()]

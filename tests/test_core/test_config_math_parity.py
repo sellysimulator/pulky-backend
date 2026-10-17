@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from app.core.enums import Incoterm, Weekday
+from app.core.enums import IncotermTier, Weekday
 from app.core.insurance import break_even_fee
 from app.core.kernels import weekday_multiplier
 from app.core.lots import days_left, hazard, quality, quality_guide
@@ -72,7 +72,7 @@ def test_reputation_step_matches(case):
 @pytest.mark.parametrize("case", CASES["break_even_fee"])
 def test_break_even_fee_matches(case):
     got = break_even_fee(
-        Incoterm(case["tier"]),
+        IncotermTier(case["tier"]),
         failure_probability=case["failure_probability"],
         loss_fraction=case["loss_fraction"],
         shared=case["shared"],

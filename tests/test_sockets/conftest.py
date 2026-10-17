@@ -165,7 +165,10 @@ class World:
             await svc.save_room(code, room)
 
     async def finish_early(self, code: str, game_id: str | None = None) -> None:
-        """Reach a finished room through the engine's public end_early()."""
+        """Reach a finished room through the engine's public end_early().
+
+        ``game_id`` marks the game persisted under that id; without it the game has an
+        id (every finished game does) but is not stored yet."""
         svc = get_state_service()
         async with svc.lock(code):
             room = await svc.get_room(code)
@@ -176,7 +179,8 @@ class World:
             game_service.store_engine(room, engine)
             room["state"] = "finished"
             room["finished_at"] = "2026-10-12T15:00:00Z"
-            room["game_id"] = game_id
+            room["game_id"] = game_id or "f" * 32
+            room["persisted"] = game_id is not None
             await svc.save_room(code, room)
 
     # ---------------------------------------------------------------- sockets

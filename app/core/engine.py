@@ -10,7 +10,7 @@ from typing import Any
 from app.core import demand as demand_mod
 from app.core.calendar import order_windows, weekday_of
 from app.core.config_models import GameConfig
-from app.core.enums import Incoterm, Phase, TradeSide
+from app.core.enums import IncotermTier, Phase, TradeSide
 from app.core.futures import FuturesBook, fill_futures, make_contract
 from app.core.insurance import plan_rows, refund_value, tier_fee
 from app.core.kernels import weekday_multipliers
@@ -144,7 +144,7 @@ class PulkyEngine:
         self._public_history = public_history
         self._market_history = market_history
         self._supplier = self._make_supplier()
-        self._tiers = config.tier_terms()
+        self._tier_terms = config.tier_terms()
         self._multipliers = weekday_multipliers(
             config.demand.weekday_peak.from_, config.demand.weekday_peak.to
         )
@@ -196,7 +196,7 @@ class PulkyEngine:
                     qty=sup.initial_pipeline_qty,
                     lost=0,
                     unit_cost=sup.base_price,
-                    incoterm=Incoterm.EXW,
+                    incoterm_tier=IncotermTier.EXW,
                     shipped_day=k - lead,
                 )
                 for k in range(1, lead + 1)
@@ -321,7 +321,7 @@ class PulkyEngine:
     def outlay(self, alias: str, decision: Decision) -> float:
         player = self._players[alias]
         c = self._config
-        fee = tier_fee(decision.incoterm, self._tiers)
+        fee = tier_fee(decision.incoterm_tier, self._tier_terms)
         conserved_units = 0
         for lot_id in decision.conserve_lots:
             lot = player.cellar.get(lot_id)
@@ -373,8 +373,8 @@ class PulkyEngine:
         if decision.order_futures > 0 and not win.futures_open:
             raise InvalidDecision(win.futures_message)
         if (
-            decision.incoterm != Incoterm.EXW
-            and not self._tiers[decision.incoterm].enabled
+            decision.incoterm_tier != IncotermTier.EXW
+            and not self._tier_terms[decision.incoterm_tier].enabled
         ):
             raise InvalidDecision(MSG_TIER_UNAVAILABLE)
         if not self._config.peer_market.enabled and (
@@ -491,7 +491,9 @@ class PulkyEngine:
             if w.shipped > 0:
                 w.unit_cost = (spot * w.allocated + base * w.futures_filled) / w.shipped
             w.cost_transport = c.transport.unit_cost * w.shipped
-            w.cost_insurance = tier_fee(w.decision.incoterm, self._tiers) * w.shipped
+            w.cost_insurance = (
+                tier_fee(w.decision.incoterm_tier, self._tier_terms) * w.shipped
+            )
 
         # S8 refrigeration failure
         failure = draw_failure(
@@ -514,7 +516,7 @@ class PulkyEngine:
                     qty=w.shipped - w.lost,
                     lost=w.lost,
                     unit_cost=w.unit_cost,
-                    incoterm=w.decision.incoterm,
+                    incoterm_tier=w.decision.incoterm_tier,
                     shipped_day=d,
                 )
             )
@@ -540,7 +542,7 @@ class PulkyEngine:
                     )
                 )
             w.refund_insurance = arrival.lost * refund_value(
-                arrival.incoterm,
+                arrival.incoterm_tier,
                 paid_unit_cost=arrival.unit_cost,
                 arrival_spot_price=spot,
                 retail_price=retail,
@@ -617,7 +619,7 @@ class PulkyEngine:
                 weekday=wd,
                 order_spot=dec.order_spot,
                 order_futures=dec.order_futures,
-                incoterm=dec.incoterm,
+                incoterm_tier=dec.incoterm_tier,
                 conserve_lots=dec.conserve_lots,
                 lots_conserved=w.lots_conserved,
                 cooperate=dec.cooperate,
@@ -910,7 +912,7 @@ class PulkyEngine:
                 "arrives_day": s.shipped_day + lead,
                 "qty": s.qty,
                 "lost": s.lost,
-                "incoterm": s.incoterm.value,
+                "incoterm_tier": s.incoterm_tier.value,
             }
             for s in self._players[alias].pipeline.items()
             if not (s.qty == 0 and s.lost == 0)
@@ -950,8 +952,8 @@ class PulkyEngine:
             "market_share": p.records[-1].market_share if p.records else 0.0,
             "cash": p.cash,
             "cumulative_profit": self._cumulative_profit(alias),
-            "insurance_plans": plan_rows(
-                self._tiers,
+            "tier_plans": plan_rows(
+                self._tier_terms,
                 today_spot_price=self._supplier_day.spot_price,
                 retail_price=c.demand.retail_price,
             ),
@@ -1007,7 +1009,7 @@ class PulkyEngine:
                 "cash": p.cash,
                 "fill_rate": fill,
                 "waste_rate": waste,
-                "last_incoterm": last.incoterm.value if last else None,
+                "last_incoterm_tier": last.incoterm_tier.value if last else None,
                 "last_peer_bought": last.peer_bought if last else None,
                 "last_peer_sold": last.peer_sold if last else None,
             }

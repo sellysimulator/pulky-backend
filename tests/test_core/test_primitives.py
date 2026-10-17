@@ -12,7 +12,7 @@ import pytest
 from app.core import limits
 from app.core.enums import (
     WEEKDAYS,
-    Incoterm,
+    IncotermTier,
     Phase,
     RoomState,
     TradeSide,
@@ -39,7 +39,7 @@ def test_enum_values_are_wire_strings() -> None:
     assert [m.value for m in Weekday] == [
         "mon", "tue", "wed", "thu", "fri", "sat", "sun",
     ]  # fmt: skip
-    assert {m.name: m.value for m in Incoterm} == {
+    assert {m.name: m.value for m in IncotermTier} == {
         "EXW": "exw", "CIP": "cip", "DAP": "dap", "DDP": "ddp",
     }  # fmt: skip
     assert {m.name: m.value for m in RoomState} == {

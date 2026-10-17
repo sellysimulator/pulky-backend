@@ -13,7 +13,7 @@ class Weekday(StrEnum):
     SUN = "sun"
 
 
-class Incoterm(StrEnum):
+class IncotermTier(StrEnum):
     EXW = "exw"
     CIP = "cip"
     DAP = "dap"

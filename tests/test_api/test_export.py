@@ -277,10 +277,7 @@ def test_fm1_formula_injection_in_a_pulqueria_name(
     # and through the route, as the host of the live room
     room = make_room(eng, code="INJ777")
     put_live_room(live_room_for(gid, room, secret="live-secret-INJ"))
-    res = api.get(
-        "/api/v1/games/INJ777/export?format=csv",
-        headers={"X-Host-Secret": "live-secret-INJ"},
-    )
+    res = api.get(url(gid), headers={"X-Host-Secret": "live-secret-INJ"})
     assert res.status_code == 200
     assert {r["alias"]: r["display_name"] for r in parse_csv(res.text)} == names
 
@@ -288,8 +285,8 @@ def test_fm1_formula_injection_in_a_pulqueria_name(
 # --------------------------------------------------- access (3.2)
 
 
-def url(code: str, fmt: str = "csv") -> str:
-    return f"/api/v1/games/{code}/export?format={fmt}"
+def url(public_id: str, fmt: str = "csv") -> str:
+    return f"/api/v1/games/id/{public_id}/export?format={fmt}"
 
 
 @pytest.mark.dbschema
@@ -298,13 +295,13 @@ def test_valid_secret_of_the_live_room_exports_both_formats(
 ) -> None:
     put_live_room(live_room_for(game["id"], game["room"], secret="live-secret-A"))
     headers = {"X-Host-Secret": "live-secret-A"}
-    res = api.get(url(game["code"]), headers=headers)
+    res = api.get(url(game["id"]), headers=headers)
     assert res.status_code == 200
     disposition = res.headers["content-disposition"]
     assert disposition.startswith("attachment")
     assert f"pulky-{game['code']}-{game['id'][:8]}.csv" in disposition
     assert len(parse_csv(res.text)) == 14
-    res = api.get(url(game["code"], "json"), headers=headers)
+    res = api.get(url(game["id"], "json"), headers=headers)
     assert res.status_code == 200
     assert res.headers["content-disposition"].startswith("attachment")
     assert f"pulky-{game['code']}-{game['id'][:8]}.json" in (
@@ -319,9 +316,9 @@ def test_wrong_secret_and_missing_header_are_403_with_the_summary_copy(
     api: TestClient, game: dict[str, Any]
 ) -> None:
     put_live_room(live_room_for(game["id"], game["room"], secret="live-secret-A"))
-    wrong = api.get(url(game["code"]), headers={"X-Host-Secret": "wrong"})
+    wrong = api.get(url(game["id"]), headers={"X-Host-Secret": "wrong"})
     assert wrong.status_code == 403 and wrong.json() == HOST_FORBIDDEN
-    missing = api.get(url(game["code"]))
+    missing = api.get(url(game["id"]))
     assert missing.status_code == 403 and missing.json() == HOST_FORBIDDEN
 
 
@@ -332,10 +329,10 @@ def test_host_bearer_exports_with_a_live_room_and_after_the_room_expired(
     bearer = sign_in(firebase_tokens, "uid-host-1")
     # the room is still live, and the bearer carries no secret
     put_live_room(live_room_for(game["id"], game["room"], secret="live-secret-A"))
-    assert api.get(url(game["code"]), headers=bearer).status_code == 200
+    assert api.get(url(game["id"]), headers=bearer).status_code == 200
     # the room has expired (24 h): the host's account still exports
     drop_live_room(game["code"])
-    res = api.get(url(game["code"], "json"), headers=bearer)
+    res = api.get(url(game["id"], "json"), headers=bearer)
     assert res.status_code == 200
     assert len(res.json()["player_days"]) == 14
 
@@ -349,7 +346,7 @@ def test_other_bearer_and_guest_hosted_game_are_403(
     engine: PulkyEngine,
 ) -> None:
     other = sign_in(firebase_tokens, "uid-someone-else")
-    res = api.get(url(game["code"]), headers=other)
+    res = api.get(url(game["id"]), headers=other)
     assert res.status_code == 403 and res.json() == HOST_FORBIDDEN
     # a game whose host was a guest has no host user: no bearer exports it
     guest_hosted = make_room(
@@ -358,8 +355,8 @@ def test_other_bearer_and_guest_hosted_game_are_403(
         started_at="2026-10-14T09:00:00Z",
         finished_at="2026-10-14T10:00:00Z",
     )
-    persist(guest_hosted, factory)
-    res = api.get(url("GST234"), headers=sign_in(firebase_tokens, "uid-host-1"))
+    guest_game = persist(guest_hosted, factory)
+    res = api.get(url(guest_game), headers=sign_in(firebase_tokens, "uid-host-1"))
     assert res.status_code == 403 and res.json() == HOST_FORBIDDEN
 
 
@@ -383,10 +380,10 @@ def test_fm6_the_secret_of_a_different_live_room_does_not_export(
     put_live_room(
         live_room_for(elsewhere, game["room"], secret="secret-of-OTH222", code="OTH222")
     )
-    res = api.get(url(game["code"]), headers={"X-Host-Secret": "secret-of-OTH222"})
+    res = api.get(url(game["id"]), headers={"X-Host-Secret": "secret-of-OTH222"})
     assert res.status_code == 403 and res.json() == HOST_FORBIDDEN
     # sanity: that secret does export its own game
-    own = api.get(url("OTH222"), headers={"X-Host-Secret": "secret-of-OTH222"})
+    own = api.get(url(elsewhere), headers={"X-Host-Secret": "secret-of-OTH222"})
     assert own.status_code == 200
 
 
@@ -408,27 +405,29 @@ def test_fm6_a_reused_code_live_room_for_another_game_does_not_export_this_one(
     )
     assert newer != game["id"]
     put_live_room(live_room_for(newer, game["room"], secret="live-secret-NEW"))
-    # the export route is keyed by code, so it serves the latest game for it,
-    # and the live room (game_id == that latest game) is its host
-    ok = api.get(url(game["code"]), headers={"X-Host-Secret": "live-secret-NEW"})
+    # the export route is keyed by game id: the live room's secret exports its own
+    # game, never the earlier game that used the same code
+    ok = api.get(url(newer), headers={"X-Host-Secret": "live-secret-NEW"})
     assert ok.status_code == 200
     assert f"-{newer[:8]}." in ok.headers["content-disposition"]
+    old = api.get(url(game["id"]), headers={"X-Host-Secret": "live-secret-NEW"})
+    assert old.status_code == 403 and old.json() == HOST_FORBIDDEN
     # a live room whose game_id is neither: valid secret, still refused
     put_live_room(live_room_for("f" * 32, game["room"], secret="live-secret-NEW"))
-    bad = api.get(url(game["code"]), headers={"X-Host-Secret": "live-secret-NEW"})
+    bad = api.get(url(newer), headers={"X-Host-Secret": "live-secret-NEW"})
     assert bad.status_code == 403 and bad.json() == HOST_FORBIDDEN
 
 
 @pytest.mark.dbschema
-def test_unknown_code_is_404_and_another_format_is_422(
+def test_unknown_game_id_is_404_and_another_format_is_422(
     api: TestClient, game: dict[str, Any]
 ) -> None:
     put_live_room(live_room_for(game["id"], game["room"], secret="live-secret-A"))
     headers = {"X-Host-Secret": "live-secret-A"}
-    missing = api.get(url("NOPE99"), headers=headers)
+    missing = api.get(url("0" * 32), headers=headers)
     assert missing.status_code == 404 and missing.json() == NOT_FOUND
-    assert api.get(url(game["code"], "xml"), headers=headers).status_code == 422
-    assert api.get(url(game["code"], "xlsx"), headers=headers).status_code == 422
+    assert api.get(url(game["id"], "xml"), headers=headers).status_code == 422
+    assert api.get(url(game["id"], "xlsx"), headers=headers).status_code == 422
 
 
 @pytest.mark.dbschema
@@ -439,8 +438,8 @@ def test_ac3_exported_files_carry_no_identity(
     headers = {"X-Host-Secret": "live-secret-A"}
     secrets = [*secrets_of(game["room"]), "live-secret-A"]
     for fmt in ("csv", "json"):
-        res = api.get(url(game["code"], fmt), headers=headers)
+        res = api.get(url(game["id"], fmt), headers=headers)
         assert res.status_code == 200
         assert_no_secrets(res.text, secrets)
         assert_no_secrets(dict(res.headers), secrets)
-    assert guest_id(1) not in api.get(url(game["code"]), headers=headers).text
+    assert guest_id(1) not in api.get(url(game["id"]), headers=headers).text

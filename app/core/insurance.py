@@ -5,86 +5,93 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from app.core.enums import Incoterm
+from app.core.enums import IncotermTier
 from app.core.money import round_cents
 
-TIER_ORDER: tuple[Incoterm, ...] = (
-    Incoterm.EXW,
-    Incoterm.CIP,
-    Incoterm.DAP,
-    Incoterm.DDP,
+INCOTERM_TIERS: tuple[IncotermTier, ...] = (
+    IncotermTier.EXW,
+    IncotermTier.CIP,
+    IncotermTier.DAP,
+    IncotermTier.DDP,
 )
+"""Every tier, from no protection to the most."""
 
-TIER_LABELS: dict[Incoterm, str] = {
-    Incoterm.EXW: "EXW — you carry the risk",
-    Incoterm.CIP: "CIP + blockchain — refund what you paid",
-    Incoterm.DAP: "DAP + blockchain — refund at market price",
-    Incoterm.DDP: "DDP + blockchain — refund at retail price",
+INSURED_TIERS: tuple[IncotermTier, ...] = INCOTERM_TIERS[1:]
+"""The tiers that refund lost units: the host can disable them and set their fees."""
+
+INCOTERM_TIER_LABELS: dict[IncotermTier, str] = {
+    IncotermTier.EXW: "EXW — you carry the risk",
+    IncotermTier.CIP: "CIP + blockchain — refund what you paid",
+    IncotermTier.DAP: "DAP + blockchain — refund at market price",
+    IncotermTier.DDP: "DDP + blockchain — refund at retail price",
 }
 
-REFUND_BASIS: dict[Incoterm, str] = {
-    Incoterm.EXW: "none",
-    Incoterm.CIP: "paid",
-    Incoterm.DAP: "arrival_spot",
-    Incoterm.DDP: "retail",
+REFUND_BASIS: dict[IncotermTier, str] = {
+    IncotermTier.EXW: "none",
+    IncotermTier.CIP: "paid",
+    IncotermTier.DAP: "arrival_spot",
+    IncotermTier.DDP: "retail",
 }
 
 
 @dataclass(frozen=True)
-class TierTerms:
+class InsuredTierTerms:
+    """The host's terms for one insured tier."""
+
     enabled: bool
     fee: float
 
 
-def tier_fee(incoterm: Incoterm, tiers: Mapping[Incoterm, TierTerms]) -> float:
-    if incoterm == Incoterm.EXW:
+def tier_fee(
+    tier: IncotermTier, terms: Mapping[IncotermTier, InsuredTierTerms]
+) -> float:
+    if tier == IncotermTier.EXW:
         return 0.0
-    terms = tiers[incoterm]
-    if not terms.enabled:
-        raise ValueError(f"tier {incoterm.value} is disabled")
-    return terms.fee
+    tier_terms = terms[tier]
+    if not tier_terms.enabled:
+        raise ValueError(f"tier {tier.value} is disabled")
+    return tier_terms.fee
 
 
 def refund_value(
-    incoterm: Incoterm,
+    tier: IncotermTier,
     *,
     paid_unit_cost: float,
     arrival_spot_price: float,
     retail_price: float,
 ) -> float:
-    if incoterm == Incoterm.CIP:
+    if tier == IncotermTier.CIP:
         return paid_unit_cost
-    if incoterm == Incoterm.DAP:
+    if tier == IncotermTier.DAP:
         return arrival_spot_price
-    if incoterm == Incoterm.DDP:
+    if tier == IncotermTier.DDP:
         return retail_price
     return 0.0
 
 
 def plan_rows(
-    tiers: Mapping[Incoterm, TierTerms],
+    terms: Mapping[IncotermTier, InsuredTierTerms],
     *,
     today_spot_price: float,
     retail_price: float,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for tier in TIER_ORDER:
-        if tier == Incoterm.EXW:
+    for tier in INCOTERM_TIERS:
+        if tier == IncotermTier.EXW:
             enabled = True
             fee = 0.0
         else:
-            terms = tiers[tier]
-            enabled = terms.enabled
-            fee = terms.fee
+            enabled = terms[tier].enabled
+            fee = terms[tier].fee
         today: float | None = None
-        if tier == Incoterm.CIP:
+        if tier == IncotermTier.CIP:
             today = today_spot_price
-        elif tier == Incoterm.DDP:
+        elif tier == IncotermTier.DDP:
             today = retail_price
         rows.append(
             {
                 "tier": tier.value,
-                "label": TIER_LABELS[tier],
+                "label": INCOTERM_TIER_LABELS[tier],
                 "enabled": enabled,
                 "refund_basis": REFUND_BASIS[tier],
                 "refund_value_today": today,
@@ -95,7 +102,7 @@ def plan_rows(
 
 
 def break_even_fee(
-    incoterm: Incoterm,
+    tier: IncotermTier,
     *,
     failure_probability: float,
     loss_fraction: float,
@@ -105,7 +112,7 @@ def break_even_fee(
     base_price: float,
     retail_price: float,
 ) -> float:
-    if incoterm == Incoterm.EXW or reference_shipment <= 0:
+    if tier == IncotermTier.EXW or reference_shipment <= 0:
         return 0.0
     loss_eff = loss_fraction / n_ref if shared else loss_fraction
     lost_per_unit = (
@@ -113,7 +120,7 @@ def break_even_fee(
         * math.floor(reference_shipment * loss_eff + 1e-9)
         / reference_shipment
     )
-    value = retail_price if incoterm == Incoterm.DDP else base_price
+    value = retail_price if tier == IncotermTier.DDP else base_price
     return lost_per_unit * value
 
 

@@ -9,7 +9,7 @@ from app.core.config_models import GameConfig
 from app.core.defaults import DEFAULT_CONFIG
 from app.core.demand import draw_demands, market_lambda, shares
 from app.core.engine import DayOutcome, PulkyEngine
-from app.core.enums import Incoterm, Phase, TradeSide, Weekday
+from app.core.enums import IncotermTier, Phase, TradeSide, Weekday
 from app.core.futures import fill_futures
 from app.core.insurance import refund_value
 from app.core.kernels import weekday_multiplier
@@ -21,7 +21,7 @@ from app.core.rng import stream
 from app.core.supply import allocate
 from app.core.transport import draw_failure, transport_losses
 
-EXW = Incoterm.EXW
+EXW = IncotermTier.EXW
 NAMES = [
     "Don Agave",
     "La Chula",
@@ -78,7 +78,7 @@ def D(day, spot=0, fut=0, tier=EXW, conserve=(), coop=False, buy=None, sell=None
     return Decision(day, spot, fut, tier, tuple(conserve), coop, buy, sell)
 
 
-CIP, DAP, DDP = Incoterm.CIP, Incoterm.DAP, Incoterm.DDP
+CIP, DAP, DDP = IncotermTier.CIP, IncotermTier.DAP, IncotermTier.DDP
 
 
 def view_lots(e, alias):
@@ -132,7 +132,13 @@ def test_deterministic_day_worked_example():
     assert e.awaiting() == ["P1", "P2"] and not e.has_submitted("P1")
     # the shipment is in the pipeline and arrives tomorrow as lot L2
     assert e.player_view("P1")["in_transit"] == [
-        {"shipped_day": 1, "arrives_day": 2, "qty": 30, "lost": 0, "incoterm": "exw"}
+        {
+            "shipped_day": 1,
+            "arrives_day": 2,
+            "qty": 30,
+            "lost": 0,
+            "incoterm_tier": "exw",
+        }
     ]
     out2 = play(e)
     assert out2.records["P1"].delivered == 30
@@ -264,7 +270,13 @@ def test_futures_timeline_paid_ships_and_arrives_on_schedule():
     assert r3.futures_vs_spot == round_cents((spot3 - 12.0) * 10)
     assert e.player_view("P1")["futures_book"] == []
     assert e.player_view("P1")["in_transit"] == [
-        {"shipped_day": 3, "arrives_day": 4, "qty": 20, "lost": 0, "incoterm": "cip"}
+        {
+            "shipped_day": 3,
+            "arrives_day": 4,
+            "qty": 20,
+            "lost": 0,
+            "incoterm_tier": "cip",
+        }
     ]
     r4 = play(e).records["P1"]
     assert r4.delivered == 20

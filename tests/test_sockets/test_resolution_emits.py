@@ -270,7 +270,10 @@ async def test_a_finishing_day_emits_game_finished_then_game_persisted(
     room = await world.room(game.code)
     engine = room_engine(room)
     finished = got[7][2]
-    assert {k: v for k, v in finished.items() if k != "seq"} == norm(engine.results())
+    assert re.fullmatch(r"[0-9a-f]{32}", finished["game_id"])
+    assert finished["game_id"] == room["game_id"]
+    body = {k: v for k, v in finished.items() if k not in ("seq", "game_id")}
+    assert body == norm(engine.results())
     assert finished["ended_early"] is False
     assert finished["days_played"] == 7
     persisted = got[8][2]
@@ -326,12 +329,13 @@ async def test_a_failed_persistence_leaves_the_game_finished_and_silent(
     room = await world.room(game.code)
     assert room["state"] == "finished"
     assert room["persisted"] is False
-    assert room["game_id"] is None
+    # the id came with game_finished, so the results link exists before it is stored
+    assert room["game_id"] == got[-1][2]["game_id"]
 
 
 # ------------------------------------------------------------ finish() (3.4)
 @aio
-async def test_finish_records_the_game_id_then_announces_it(
+async def test_finish_marks_the_game_persisted_then_announces_its_id(
     world: World, persist: PersistSpy, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     game = await world.running_game()
@@ -367,5 +371,5 @@ async def test_finish_emits_nothing_when_persistence_returns_none(
     assert world.sm.records[start:] == []
     room = await world.room(game.code)
     assert room["persisted"] is False
-    assert room["game_id"] is None
+    assert room["game_id"] == before["game_id"]
     assert room["seq"] == before["seq"]

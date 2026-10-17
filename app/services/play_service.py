@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import time
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 
@@ -22,6 +23,18 @@ MSG_GAME_FINISHED = "The game is over."
 
 def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _mark_finished(room: dict) -> None:
+    """Finish the room and give the game its id: the only key of the stored game, its
+    results link and its export (spec 11.3), since a room code is reissued later."""
+    room["state"] = RoomState.FINISHED.value
+    room["finished_at"] = _now()
+    room["game_id"] = room.get("game_id") or uuid.uuid4().hex
+
+
+def _game_finished(room: dict, results: dict, seq: int) -> dict:
+    return {"seq": seq, "game_id": room["game_id"], **results}
 
 
 def _sids_for(room: dict, alias: str) -> list[str]:
@@ -120,8 +133,7 @@ def resolution_emits(
         raise ValueError("The room has no engine.")
     code = room["room_code"]
     if outcome.finished:
-        room["state"] = RoomState.FINISHED.value
-        room["finished_at"] = _now()
+        _mark_finished(room)
     emits = [
         Emit(
             code,
@@ -148,7 +160,11 @@ def resolution_emits(
     emits += _daily_state_emits(room, next_seq)
     if outcome.finished:
         emits.append(
-            Emit(code, "game_finished", {"seq": next_seq(room), **engine.results()})
+            Emit(
+                code,
+                "game_finished",
+                _game_finished(room, engine.results(), next_seq(room)),
+            )
         )
         logger.info("room %s finished", code)
     else:
@@ -164,14 +180,13 @@ def end_early(room: dict, next_seq: Callable[[dict], int]) -> list[Emit]:
         raise ValueError("The room has no engine.")
     engine.end_early()
     game_service.store_engine(room, engine)
-    room["state"] = RoomState.FINISHED.value
-    room["finished_at"] = _now()
+    _mark_finished(room)
     emits = _daily_state_emits(room, next_seq)
     emits.append(
         Emit(
             room["room_code"],
             "game_finished",
-            {"seq": next_seq(room), **engine.results()},
+            _game_finished(room, engine.results(), next_seq(room)),
         )
     )
     logger.info("room %s finished", room["room_code"])
@@ -195,7 +210,6 @@ async def finish(room_code: str) -> None:
             if room is None:
                 return
             room["persisted"] = True
-            room["game_id"] = game_id
             emits.append(
                 Emit(
                     room["room_code"],

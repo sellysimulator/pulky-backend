@@ -250,7 +250,11 @@ async def test_claim_of_a_finished_room_resyncs_the_host(world: World) -> None:
     by_event = dict(seen)
     assert by_event["host_state"]["full"] is True
     assert by_event["host_state"]["state"] == "finished"
-    finished = {k: v for k, v in by_event["game_finished"].items() if k != "seq"}
+    finished = {
+        k: v
+        for k, v in by_event["game_finished"].items()
+        if k not in ("seq", "game_id")
+    }
     assert finished == norm(engine.results())
     assert by_event["game_persisted"]["game_id"] == "pub-1234"
     seqs = [

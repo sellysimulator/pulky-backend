@@ -1,36 +1,46 @@
 """User accounts and aggregate player statistics (spec 13.5)."""
 
 from collections.abc import Iterable
+from typing import Any, cast
 
-from sqlalchemy import bindparam, select, text
+from sqlalchemy import Select, Table, case, func, select
+from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.limits import MAX_DISPLAY_NAME
+from app.models.game import Participant, UserStats
 from app.models.user import User
 
 DEFAULT_DISPLAY_NAME = "Player"
 
-_AGGREGATE = text(
-    "SELECT user_id, COUNT(*) AS games_played, "
-    "SUM(CASE WHEN final_rank = 1 THEN 1 ELSE 0 END) AS wins, "
-    "SUM(total_profit) AS total_profit, MAX(total_profit) AS best_profit, "
-    "AVG(fill_rate) AS avg_fill_rate, AVG(waste_rate) AS avg_waste_rate, "
-    "AVG(overall_market_share) AS avg_market_share "
-    "FROM participants WHERE user_id IN :ids GROUP BY user_id"
-).bindparams(bindparam("ids", expanding=True))
-
-_UPSERT = text(
-    "INSERT INTO user_stats (user_id, games_played, wins, total_profit, "
-    "best_profit, avg_fill_rate, avg_waste_rate, avg_market_share) "
-    "VALUES (:user_id, :games_played, :wins, :total_profit, :best_profit, "
-    ":avg_fill_rate, :avg_waste_rate, :avg_market_share) "
-    "ON DUPLICATE KEY UPDATE games_played = VALUES(games_played), "
-    "wins = VALUES(wins), total_profit = VALUES(total_profit), "
-    "best_profit = VALUES(best_profit), avg_fill_rate = VALUES(avg_fill_rate), "
-    "avg_waste_rate = VALUES(avg_waste_rate), "
-    "avg_market_share = VALUES(avg_market_share)"
+_STAT_COLUMNS = (
+    "games_played",
+    "wins",
+    "total_profit",
+    "best_profit",
+    "avg_fill_rate",
+    "avg_waste_rate",
+    "avg_market_share",
 )
+
+
+def _aggregate(ids: list[int]) -> Select[Any]:
+    """One grouped query for every given user (spec 13.5: no N+1)."""
+    return (
+        select(
+            Participant.user_id,
+            func.count().label("games_played"),
+            func.sum(case((Participant.final_rank == 1, 1), else_=0)).label("wins"),
+            func.sum(Participant.total_profit).label("total_profit"),
+            func.max(Participant.total_profit).label("best_profit"),
+            func.avg(Participant.fill_rate).label("avg_fill_rate"),
+            func.avg(Participant.waste_rate).label("avg_waste_rate"),
+            func.avg(Participant.overall_market_share).label("avg_market_share"),
+        )
+        .where(Participant.user_id.in_(ids))
+        .group_by(Participant.user_id)
+    )
 
 
 def _optional_float(value: object) -> float | None:
@@ -42,7 +52,7 @@ def rebuild_user_stats(db: Session, user_ids: Iterable[int]) -> None:
     ids = sorted(set(user_ids))
     if not ids:
         return
-    rows = db.execute(_AGGREGATE, {"ids": ids}).mappings().all()
+    rows = db.execute(_aggregate(ids)).mappings().all()
     params = [
         {
             "user_id": int(row["user_id"]),
@@ -57,7 +67,13 @@ def rebuild_user_stats(db: Session, user_ids: Iterable[int]) -> None:
         for row in rows
     ]
     if params:
-        db.execute(_UPSERT, params)
+        # MySQL's upsert: a concurrent rebuild for the same user is last-writer-wins.
+        # On the Table, not the entity: the ORM bulk path drops None values per row.
+        upsert = mysql_insert(cast(Table, UserStats.__table__))
+        upsert = upsert.on_duplicate_key_update(
+            {name: upsert.inserted[name] for name in _STAT_COLUMNS}
+        )
+        db.execute(upsert, params)
     db.commit()
 
 

@@ -2,33 +2,44 @@
 
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.game import Game, Participant, UserStats
 from app.models.user import User
 from app.services import stats_service
 from app.services.results_service import iso_utc
 from app.services.room_service import sanitise_display_name
 
-_STATS = text(
-    "SELECT games_played, wins, total_profit, best_profit, avg_fill_rate, "
-    "avg_waste_rate, avg_market_share FROM user_stats WHERE user_id = :uid"
+_STATS = select(
+    UserStats.games_played,
+    UserStats.wins,
+    UserStats.total_profit,
+    UserStats.best_profit,
+    UserStats.avg_fill_rate,
+    UserStats.avg_waste_rate,
+    UserStats.avg_market_share,
 )
 # One joined query for the whole list, however many games the user played.
-_GAMES = text(
-    "SELECT g.public_id AS game_id, g.room_code AS room_code, "
-    "g.finished_at AS finished_at, g.days_played AS days_played, "
-    "g.duration_days AS duration_days, g.player_count AS player_count, "
-    "g.ended_early AS ended_early, p.alias AS alias, "
-    "p.display_name AS display_name, p.final_rank AS player_rank, "
-    "p.total_profit AS total_profit "
-    "FROM participants p JOIN games g ON g.id = p.game_id "
-    "WHERE p.user_id = :uid ORDER BY g.finished_at DESC, g.id DESC"
+_GAMES = (
+    select(
+        Game.public_id.label("game_id"),
+        Game.room_code,
+        Game.finished_at,
+        Game.days_played,
+        Game.duration_days,
+        Game.player_count,
+        Game.ended_early,
+        Participant.alias,
+        Participant.display_name,
+        Participant.final_rank.label("player_rank"),
+        Participant.total_profit,
+    )
+    .select_from(Participant)
+    .join(Game, Game.id == Participant.game_id)
+    .order_by(Game.finished_at.desc(), Game.id.desc())
 )
-_MY_ALIAS = text(
-    "SELECT p.alias AS alias FROM participants p JOIN games g ON g.id = p.game_id "
-    "WHERE p.user_id = :uid AND g.public_id = :public_id"
-)
+_MY_ALIAS = select(Participant.alias).join(Game, Game.id == Participant.game_id)
 
 
 def firebase_uid(claims: dict) -> str | None:
@@ -98,7 +109,7 @@ def _optional_float(value: object) -> float | None:
 def user_stats(db: Session, user: User | None) -> dict:
     row = None
     if user is not None:
-        row = db.execute(_STATS, {"uid": user.id}).mappings().first()
+        row = db.execute(_STATS.where(UserStats.user_id == user.id)).mappings().first()
     if row is None:
         return {
             "games_played": 0,
@@ -123,7 +134,7 @@ def user_stats(db: Session, user: User | None) -> dict:
 def list_user_games(db: Session, user: User | None) -> list[dict]:
     if user is None:
         return []
-    rows = db.execute(_GAMES, {"uid": user.id}).mappings().all()
+    rows = db.execute(_GAMES.where(Participant.user_id == user.id)).mappings().all()
     return [
         {
             "game_id": row["game_id"],
@@ -146,5 +157,7 @@ def alias_in_game(db: Session, user: User | None, public_id: str) -> str | None:
     """The caller's alias in that game, ``None`` when they did not play it."""
     if user is None:
         return None
-    row = db.execute(_MY_ALIAS, {"uid": user.id, "public_id": public_id}).first()
+    row = db.execute(
+        _MY_ALIAS.where(Participant.user_id == user.id, Game.public_id == public_id)
+    ).first()
     return None if row is None else str(row[0])

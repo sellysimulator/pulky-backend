@@ -39,7 +39,8 @@ def _money() -> Mapped[Decimal]:
 
 
 def _ratio(nullable: bool = False) -> Mapped[Any]:
-    return mapped_column(DOUBLE(), nullable=nullable)
+    # asdecimal=False: read back as the exact float stored, never a rounded Decimal.
+    return mapped_column(DOUBLE(asdecimal=False), nullable=nullable)
 
 
 def _int() -> Mapped[int]:
@@ -56,7 +57,6 @@ def _json() -> Mapped[Any]:
 
 class Game(TimestampMixin, Base):
     __tablename__ = "games"
-    __table_args__ = (UniqueConstraint("room_code", "started_at"),)
 
     id: Mapped[int] = _id()
     public_id: Mapped[str] = mapped_column(CHAR(32), unique=True)
@@ -139,8 +139,10 @@ class PlayerDay(TimestampMixin, Base):
     conserve_lots: Mapped[Any] = _json()
     lots_conserved: Mapped[int] = _int()
     cooperate: Mapped[bool] = _flag()
-    peer_buy: Mapped[Any | None] = mapped_column(JSON, nullable=True)
-    peer_sell: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    peer_buy: Mapped[Any | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    peer_sell: Mapped[Any | None] = mapped_column(
+        JSON(none_as_null=True), nullable=True
+    )
     outlay: Mapped[Decimal] = _money()
     # Flow
     opening_stock: Mapped[int] = _int()

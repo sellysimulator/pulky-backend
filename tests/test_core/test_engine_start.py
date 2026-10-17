@@ -9,7 +9,7 @@ from app.core.config_models import GameConfig
 from app.core.defaults import DEFAULT_CONFIG
 from app.core.demand import market_lambda
 from app.core.engine import PulkyEngine
-from app.core.enums import Incoterm, Phase, Weekday
+from app.core.enums import IncotermTier, Phase, Weekday
 from app.core.kernels import weekday_multiplier, weekday_multipliers
 from app.core.lots import Cellar, Lot
 from app.core.money import round_cents
@@ -17,7 +17,7 @@ from app.core.records import Decision
 from app.core.sampling import halfup
 from app.core.supply import AbstractSupplier
 
-EXW = Incoterm.EXW
+EXW = IncotermTier.EXW
 NAMES = [
     "Don Agave",
     "La Chula",
@@ -163,7 +163,13 @@ def test_no_initial_stock_means_no_l0():
 def test_initial_pipeline_is_l_slots_front_first():
     e = start(quiet(2, supplier__lead_time_days=3, supplier__initial_pipeline_qty=5))
     expected = [
-        {"shipped_day": k - 3, "arrives_day": k, "qty": 5, "lost": 0, "incoterm": "exw"}
+        {
+            "shipped_day": k - 3,
+            "arrives_day": k,
+            "qty": 5,
+            "lost": 0,
+            "incoterm_tier": "exw",
+        }
         for k in (1, 2, 3)
     ]
     assert e.player_view("P1")["in_transit"] == expected
