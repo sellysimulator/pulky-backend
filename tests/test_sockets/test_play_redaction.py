@@ -363,3 +363,23 @@ async def test_a_day_of_trades_leaks_no_secret_config_or_cellar_detail(
     configs = [v for _, p in facing for v in collect_values(p, "config")]
     assert configs, "game_started carries a config"
     assert all(leaf_paths(c) == SHOWN_CONFIG_PATHS for c in configs)
+
+
+# ---------------------------------------------------- the supplier capacity
+@aio
+async def test_the_supplier_capacity_reaches_the_host_and_no_player(
+    world: World,
+) -> None:
+    game = await peer_day(world)
+    await play_day(game, 2)
+    await request_state(game.sids["P1"], {"room_id": game.code})
+    facing = player_facing(world, game.code, game.host_sid)
+    assert {event for event, _ in facing} >= {"day_opened", "day_closed", "your_state"}
+    for event, payload in facing:
+        if event == "game_finished":
+            continue
+        assert not contains_key(payload, "capacity"), event
+    host_states = [
+        r[2] for r in world.sm.records if r[0] == game.host_sid and r[1] == "host_state"
+    ]
+    assert any(contains_key(s, "capacity") for s in host_states)

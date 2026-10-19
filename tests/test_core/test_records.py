@@ -549,7 +549,6 @@ def make_public(avg: float | None = 14.5) -> PublicDayResults:
         demand_total=97,
         units_sold_total=90,
         spot_price=13.4,
-        capacity=81,
         disrupted=False,
         cooperation=True,
         cooperators=4,
@@ -593,6 +592,13 @@ def test_public_results_round_trip_ignores_display_name() -> None:
         named = r.to_payload({"P1": "A", "P2": "B"})
         assert PublicDayResults.from_payload(named) == r
         assert PublicDayResults.from_payload(named).players["P1"] == r.players["P1"]
+
+
+def test_public_results_carry_no_capacity_and_load_snapshots_that_did() -> None:
+    plain = make_public().to_payload()
+    assert "capacity" not in plain
+    older = {**plain, "capacity": 81}
+    assert PublicDayResults.from_payload(older) == make_public()
 
 
 def test_public_results_does_not_mutate_input_on_payload() -> None:
@@ -657,6 +663,6 @@ def test_decision_field_order() -> None:
     ]  # fmt: skip
     assert [f.name for f in dataclasses.fields(PublicDayResults)] == [
         "day", "weekday", "demand_total", "units_sold_total", "spot_price",
-        "capacity", "disrupted", "cooperation", "cooperators",
+        "disrupted", "cooperation", "cooperators",
         "refrigeration_failure", "peer_units", "peer_avg_price", "players",
     ]  # fmt: skip

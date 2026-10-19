@@ -149,6 +149,17 @@ async def test_no_player_facing_emit_carries_a_secret_key_or_value(
 
 
 @aio
+async def test_no_player_facing_emit_carries_the_supplier_capacity(
+    world: World,
+) -> None:
+    flow = await lobby_to_finish(world)
+    facing = [r for r in player_facing(world, flow) if r[1] != "game_finished"]
+    assert facing
+    for target, event, data, _ in facing:
+        assert not contains_key(data, "capacity"), f"capacity in {event} to {target}"
+
+
+@aio
 async def test_shown_config_is_exactly_the_five_keys(world: World) -> None:
     flow = await lobby_to_finish(world)
     shown = [
