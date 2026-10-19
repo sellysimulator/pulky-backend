@@ -10,7 +10,7 @@ from typing import Any
 from app.core import demand as demand_mod
 from app.core.calendar import order_windows, weekday_of
 from app.core.config_models import GameConfig
-from app.core.enums import IncotermTier, Phase, TradeSide
+from app.core.enums import IncotermTier, Phase, TradeSide, Weekday
 from app.core.futures import FuturesBook, fill_futures, make_contract
 from app.core.insurance import plan_rows, refund_value, tier_fee
 from app.core.kernels import weekday_multipliers
@@ -48,6 +48,16 @@ from app.core.supply import AbstractSupplier, SupplierDay, allocate
 from app.core.transport import draw_failure, transport_losses
 
 _ALIAS_RE = re.compile(r"^P[1-9][0-9]*$")
+# spec 4.2: the disruption message names the weekday in full
+_WEEKDAY_NAMES = {
+    Weekday.MON: "Monday",
+    Weekday.TUE: "Tuesday",
+    Weekday.WED: "Wednesday",
+    Weekday.THU: "Thursday",
+    Weekday.FRI: "Friday",
+    Weekday.SAT: "Saturday",
+    Weekday.SUN: "Sunday",
+}
 
 
 _RECORD_FIELDS: tuple[str, ...] = tuple(DayRecord.__dataclass_fields__)
@@ -285,7 +295,7 @@ class PulkyEngine:
         if sd.disrupted:
             factor = halfup(c.supplier.disruption_factor * 100)
             message = (
-                f"Day {d} ({wd.value.capitalize()}): "
+                f"Day {d} ({_WEEKDAY_NAMES[wd]}): "
                 f"supplier capacity cut to {factor}%"
             )
         return {
@@ -296,7 +306,6 @@ class PulkyEngine:
             "weekday_multipliers": {w.value: m for w, m in self._multipliers.items()},
             "expected_demand": round(self._lambda_today(), 2),
             "supplier": {
-                "capacity": sd.capacity,
                 "disrupted": sd.disrupted,
                 "disruption_message": message,
                 "spot_price": sd.spot_price,
@@ -686,7 +695,6 @@ class PulkyEngine:
             demand_total=demand_total,
             units_sold_total=sold_total,
             spot_price=spot,
-            capacity=sd.capacity,
             disrupted=sd.disrupted,
             cooperation=cooperation,
             cooperators=cooperators,

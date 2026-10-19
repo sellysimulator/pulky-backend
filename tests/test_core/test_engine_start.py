@@ -235,7 +235,7 @@ def test_day_one_supplier_draw_is_made_at_start():
     e = start(config, seed=11)
     draw = supplier_for(config, 4, 11).draw_day(1)
     supplier = e.brief()["supplier"]
-    assert supplier["capacity"] == draw.capacity
+    assert "capacity" not in supplier  # players never see it (spec 11.1)
     assert supplier["disrupted"] == draw.disrupted
     assert supplier["spot_price"] == draw.spot_price
 
@@ -278,10 +278,9 @@ def test_brief_has_the_spec_shape_on_day_five_with_defaults():
     message = (
         None
         if not draw.disrupted
-        else f"Day 5 (Fri): supplier capacity cut to {halfup(0.4 * 100)}%"
+        else f"Day 5 (Friday): supplier capacity cut to {halfup(0.4 * 100)}%"
     )
     assert brief["supplier"] == {
-        "capacity": draw.capacity,
         "disrupted": draw.disrupted,
         "disruption_message": message,
         "spot_price": draw.spot_price,
@@ -314,14 +313,13 @@ def test_disruption_message_names_the_day_and_the_cut_factor():
     assert brief["supplier"]["disrupted"] is True
     # halfup(0.125 * 100) = 13, not the banker's-rounded 12
     assert brief["supplier"]["disruption_message"] == (
-        "Day 1 (Mon): supplier capacity cut to 13%"
+        "Day 1 (Monday): supplier capacity cut to 13%"
     )
-    draw = supplier_for(config, 2, 11).draw_day(1)
-    assert brief["supplier"]["capacity"] == draw.capacity
+    assert "capacity" not in brief["supplier"]
     for _ in range(4):
         play(e)
     assert e.brief()["supplier"]["disruption_message"] == (
-        "Day 5 (Fri): supplier capacity cut to 13%"
+        "Day 5 (Friday): supplier capacity cut to 13%"
     )
 
 

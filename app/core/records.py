@@ -470,7 +470,6 @@ class PublicDayResults:
     demand_total: int
     units_sold_total: int
     spot_price: float
-    capacity: int
     disrupted: bool
     cooperation: bool
     cooperators: int

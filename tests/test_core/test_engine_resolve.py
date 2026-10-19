@@ -154,7 +154,7 @@ def test_public_results_and_market_day_of_the_deterministic_day():
     assert pub.day == 1 and pub.weekday == Weekday.MON
     assert pub.demand_total == d["P1"] + d["P2"]
     assert pub.units_sold_total == r1.sold + r2.sold
-    assert pub.spot_price == 12.0 and pub.capacity == 44
+    assert pub.spot_price == 12.0 and not hasattr(pub, "capacity")
     assert pub.disrupted is False and pub.cooperation is False
     assert pub.cooperators == 0 and pub.refrigeration_failure is False
     assert pub.peer_units == 0 and pub.peer_avg_price is None
