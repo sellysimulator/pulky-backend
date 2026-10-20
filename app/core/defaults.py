@@ -25,7 +25,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "capacity_sd_per_player": 5.0,
         "disruption_probability": 0.05,
         "disruption_factor": 0.4,
-        "lead_time_days": 1,
+        "lead_time_days": 0,
         "initial_pipeline_qty": 0,
         "quality_min": 80,
         "quality_max": 100,
