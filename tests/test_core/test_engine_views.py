@@ -312,7 +312,9 @@ def test_insurance_plans_come_from_the_tier_terms_and_todays_spot_price():
 
 
 def test_order_windows_in_the_view_follow_the_calendar():
-    config = quiet(2, duration_days=7, futures__horizon_days=3)
+    config = quiet(
+        2, duration_days=7, futures__horizon_days=3, supplier__lead_time_days=1
+    )
     e = start(config)
     for _ in range(6):
         play(e)
@@ -355,7 +357,12 @@ def test_in_transit_lists_shipments_front_first_and_skips_empty_ones():
 
 
 def test_in_transit_keeps_a_shipment_that_lost_everything():
-    config = quiet(2, transport__failure_probability=1.0, transport__loss_fraction=1.0)
+    config = quiet(
+        2,
+        transport__failure_probability=1.0,
+        transport__loss_fraction=1.0,
+        supplier__lead_time_days=1,
+    )
     e = start(config)
     play(e, {"P1": D(1, 10)})
     assert e.player_view("P1")["in_transit"] == [
@@ -423,7 +430,9 @@ def test_prefill_ignores_a_rejected_decision():
 
 
 def test_prefill_zeroes_orders_that_have_closed():
-    config = quiet(2, duration_days=7, futures__horizon_days=3)
+    config = quiet(
+        2, duration_days=7, futures__horizon_days=3, supplier__lead_time_days=1
+    )
     e = start(config)
     for day in range(1, 5):
         play(e, {"P1": D(day, 2, 1, DDP, buy=PeerBuy(9.0, 10))})

@@ -77,7 +77,7 @@ SPEC_DEFAULTS: dict[str, Any] = {
         "capacity_sd_per_player": 5,
         "disruption_probability": 0.05,
         "disruption_factor": 0.4,
-        "lead_time_days": 1,
+        "lead_time_days": 0,
         "initial_pipeline_qty": 0,
         "quality_min": 80,
         "quality_max": 100,
@@ -501,7 +501,7 @@ EXAMPLE_ERRORS: list[tuple[dict, str, str]] = [
         "Must not exceed the base price ($12.00).",
     ),
     (
-        {"futures": {"horizon_days": 1}},
+        {"supplier": {"lead_time_days": 1}, "futures": {"horizon_days": 1}},
         "futures.horizon_days",
         "Must be more days than the lead time (1).",
     ),
@@ -1068,7 +1068,7 @@ def test_cross_field_rules_are_reported_in_spec_order() -> None:
         "stock": {"fresh_days": 4, "max_days": 4, "salvage_value": 13},
         "demand": {"weekday_peak": {"from": "sun"}},
         "futures": {"horizon_days": 1},
-        "supplier": {"quality_min": 90, "quality_max": 85},
+        "supplier": {"lead_time_days": 1, "quality_min": 90, "quality_max": 85},
     }
     result = validate_config(patch)
     assert [i.field for i in result.errors] == [
@@ -1084,7 +1084,13 @@ def test_cross_field_rules_are_reported_in_spec_order() -> None:
 
 
 def test_horizon_rule_lead_time_before_game_length() -> None:
-    result = validate_config({"futures": {"horizon_days": 1}, "duration_days": 7})
+    result = validate_config(
+        {
+            "supplier": {"lead_time_days": 1},
+            "futures": {"horizon_days": 1},
+            "duration_days": 7,
+        }
+    )
     assert [i.message for i in result.errors][0] == (
         "Must be more days than the lead time (1)."
     )

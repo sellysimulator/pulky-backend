@@ -100,7 +100,15 @@ def rejected(e, alias, decision):
 
 def last_day_engine(**over):
     """Duration 7, H 3, L 1: on day 7 spot is closed, from day 5 futures are."""
-    return start(quiet(2, duration_days=7, futures__horizon_days=3, **over))
+    return start(
+        quiet(
+            2,
+            duration_days=7,
+            futures__horizon_days=3,
+            supplier__lead_time_days=1,
+            **over,
+        )
+    )
 
 
 def advance(e, to_day):
@@ -446,7 +454,7 @@ def test_outlay_uses_todays_spot_price():
 
 
 def test_outlay_charges_fee_on_futures_due_but_never_transport():
-    e = start(quiet(2, futures__horizon_days=3))
+    e = start(quiet(2, futures__horizon_days=3, supplier__lead_time_days=1))
     e.submit("P1", D(1, 0, 10))
     e.submit("P2", D(1))
     e.resolve_day()
@@ -484,6 +492,7 @@ def test_negative_cash_allows_only_the_zero_outlay_decision():
             stock__holding_cost=100,
             demand__per_player_peak=1,
             futures__horizon_days=3,
+            supplier__lead_time_days=1,
         )
     )
     e.submit("P1", D(1, 0, 30))

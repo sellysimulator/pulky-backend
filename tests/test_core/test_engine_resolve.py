@@ -94,7 +94,7 @@ def market(e, day):
 
 def test_deterministic_day_worked_example():
     # fresh_days 1 keeps L0 safe on night 1 (the default 0 gives it a 1/3 hazard)
-    e = start(quiet(2, stock__fresh_days=1), seed=11)
+    e = start(quiet(2, stock__fresh_days=1, supplier__lead_time_days=1), seed=11)
     e.submit("P1", Decision(1, 30, 0, EXW, (), False))
     assert e.outlay("P1", Decision(1, 30, 0, EXW, (), False)) == pytest.approx(390.0)
     e.submit("P2", Decision(1, 10, 0, EXW, (), False))
@@ -243,6 +243,7 @@ def test_futures_timeline_paid_ships_and_arrives_on_schedule():
     config = quiet(
         2,
         futures__horizon_days=3,
+        supplier__lead_time_days=1,
         supplier__spot_spread=0.25,
         supplier__quality_min=100,
         demand__per_player_peak=1,
@@ -286,7 +287,7 @@ def test_futures_timeline_paid_ships_and_arrives_on_schedule():
 
 
 def test_a_futures_contract_is_made_only_for_a_positive_order():
-    e = start(quiet(2, futures__horizon_days=3))
+    e = start(quiet(2, futures__horizon_days=3, supplier__lead_time_days=1))
     play(e)
     assert e.player_view("P1")["futures_book"] == []
     play(e, {"P2": D(2, 0, 4)})
@@ -301,6 +302,7 @@ def test_short_futures_day_uses_the_seeded_hamilton_fill_and_refunds_at_base(see
     config = quiet(
         2,
         futures__horizon_days=3,
+        supplier__lead_time_days=1,
         supplier__capacity_mean_per_player=2.5,
         supplier__spot_spread=0.25,
         demand__per_player_peak=1,
@@ -335,6 +337,7 @@ def test_spot_gets_the_capacity_futures_leave():
     config = quiet(
         2,
         futures__horizon_days=3,
+        supplier__lead_time_days=1,
         supplier__capacity_mean_per_player=10,
         demand__per_player_peak=1,
     )
@@ -414,7 +417,7 @@ def test_a_short_day_costs_only_allocated_units():
 
 def test_transport_and_fee_are_charged_on_shipped_units_lost_ones_included():
     # spec 14 #2
-    config = quiet(2, transport__failure_probability=1.0)
+    config = quiet(2, transport__failure_probability=1.0, supplier__lead_time_days=1)
     e = start(config)
     out = play(e, {"P1": D(1, 30, 0, CIP), "P2": D(1, 0)})
     r = out.records["P1"]
@@ -471,6 +474,7 @@ def test_insurance_refund_is_credited_on_the_arrival_day_at_the_tier_value(tier,
         transport__failure_probability=1.0,
         supplier__spot_spread=0.25,
         supplier__capacity_mean_per_player=30,
+        supplier__lead_time_days=1,
         demand__per_player_peak=1,
     )
     e = start(config, seed=11)
@@ -643,6 +647,7 @@ def test_served_backlog_earns_the_retail_price():
         stock__initial_stock=0,
         supplier__quality_min=100,
         supplier__capacity_mean_per_player=60,
+        supplier__lead_time_days=1,
     )
     e = start(config, seed=11)
     out1 = play(e, {"P1": D(1, 100)})
@@ -954,6 +959,7 @@ def peer_cash_engine(starting_cash):
         demand__retail_price=0.01,
         demand__per_player_peak=1,
         supplier__quality_min=100,
+        supplier__lead_time_days=1,
     )
     e = start(config, seed=4)
     play(e, {"P1": D(1, 0, 60)})
@@ -1019,6 +1025,7 @@ def test_unfilled_futures_alone_create_no_shortfall_and_buy_nothing():
         futures__horizon_days=3,
         supplier__capacity_mean_per_player=20,
         demand__per_player_peak=1,
+        supplier__lead_time_days=1,
     )
     e = start(config, seed=2)
     play(e, {"P1": D(1, 0, 60)})

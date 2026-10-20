@@ -153,7 +153,7 @@ def test_naive_orders_the_same_every_open_day_without_extras() -> None:
 
 
 def test_trader_day_one_example() -> None:
-    e1 = start()
+    e1 = start(make_config(**{"supplier.lead_time_days": 1}))
     d = STRATEGIES["trader"].decide(e1, "P1")
     assert d.peer_buy == PeerBuy(30.0, 30)
     assert d.peer_sell == PeerSell(15.0, 100, 24)  # 12 x 1.25; 30 - 6
@@ -206,7 +206,7 @@ def test_order_up_to_day_one_is_covered_by_initial_stock() -> None:
 
 
 def test_order_up_to_orders_the_difference() -> None:
-    cfg = make_config(**{"stock.initial_stock": 0})
+    cfg = make_config(**{"stock.initial_stock": 0, "supplier.lead_time_days": 1})
     e = start(cfg)
     target = own_demand(e, "P1", 1) + own_demand(e, "P1", 2)
     d = STRATEGIES["order_up_to"].decide(e, "P1")
@@ -216,7 +216,7 @@ def test_order_up_to_orders_the_difference() -> None:
 
 
 def test_order_up_to_counts_backlog_and_never_orders_negative() -> None:
-    cfg = make_config(**{"stock.initial_stock": 0})
+    cfg = make_config(**{"stock.initial_stock": 0, "supplier.lead_time_days": 1})
     e = start(cfg)
     advance_zero_days(e, 2)  # nothing bought: stock stays 0
     view = e.player_view("P1")
@@ -230,7 +230,7 @@ def test_order_up_to_counts_backlog_and_never_orders_negative() -> None:
 
 
 def test_order_up_to_subtracts_goods_in_transit() -> None:
-    cfg = make_config(**{"stock.initial_stock": 0})
+    cfg = make_config(**{"stock.initial_stock": 0, "supplier.lead_time_days": 1})
     e = start(cfg)
     first = STRATEGIES["order_up_to"].decide(e, "P1")
     assert first.order_spot > 0
@@ -248,7 +248,7 @@ def test_order_up_to_subtracts_goods_in_transit() -> None:
 
 
 def test_spot_closed_means_no_spot_order_for_every_strategy() -> None:
-    cfg = make_config(**{"stock.initial_stock": 0})
+    cfg = make_config(**{"stock.initial_stock": 0, "supplier.lead_time_days": 1})
     e = start(cfg)
     advance_zero_days(e, 13)
     assert e.day == 14
@@ -371,7 +371,9 @@ def test_trader_keeps_a_five_unit_safety_stock() -> None:
     # Failure mode: a trader that drops its safety stock orders exactly what
     # order_up_to orders, five units short of target + 5.
     for stock in (0, 20):
-        e = start(make_config(**{"stock.initial_stock": stock}))
+        e = start(
+            make_config(**{"stock.initial_stock": stock, "supplier.lead_time_days": 1})
+        )
         target = own_demand(e, "P1", 1) + own_demand(e, "P1", 2)
         cover = stock - e.player_view("P1")["expected_spoil_tonight"]
         expected = max(0, halfup(target + 5 - cover))
@@ -384,7 +386,7 @@ def test_trader_keeps_a_five_unit_safety_stock() -> None:
 
 
 def test_trader_safety_stock_respects_closed_spot_and_cash() -> None:
-    e = start(make_config(**{"stock.initial_stock": 0}))
+    e = start(make_config(**{"stock.initial_stock": 0, "supplier.lead_time_days": 1}))
     advance_zero_days(e, 13)
     assert STRATEGIES["trader"].decide(e, "P1").order_spot == 0
     cfg = make_config(**{"starting_cash": 100.0, "stock.initial_stock": 0})
@@ -459,7 +461,7 @@ def test_decisions_are_affordable_and_respect_windows(name: str, cash: float) ->
 @pytest.mark.parametrize("name", ALL)
 def test_no_spot_order_on_the_last_day(name: str) -> None:
     spy = Spy(STRATEGIES[name])
-    play_game(GameConfig.default(), spy, 4, seed=0)
+    play_game(make_config(**{"supplier.lead_time_days": 1}), spy, 4, seed=0)
     last = [d for d, view, _o, _c in spy.seen if view["day"] == 14]
     assert len(last) == 4
     assert all(d.order_spot == 0 and d.order_futures == 0 for d in last)
@@ -622,7 +624,9 @@ def _expected_metrics(
 
 
 def test_disruption_metrics_match_an_independent_computation() -> None:
-    cfg = make_config(**{"supplier.disruption_probability": 0.5})
+    cfg = make_config(
+        **{"supplier.disruption_probability": 0.5, "supplier.lead_time_days": 1}
+    )
     seeds = range(3)
     n = 4
     games = _games(cfg, "trader", n, seeds)
@@ -643,7 +647,9 @@ def test_disruption_sold_is_measured_on_the_arrival_day_not_the_cut_day() -> Non
     # Failure mode: measuring on the disrupted day d instead of d + L. The two
     # rules give different means for order_up_to here, and evaluate must follow
     # the d + L one (a shipment cut on day d would have arrived on d + L).
-    cfg = make_config(**{"supplier.disruption_probability": 0.4})
+    cfg = make_config(
+        **{"supplier.disruption_probability": 0.4, "supplier.lead_time_days": 1}
+    )
     seeds = range(6)
     games = _games(cfg, "order_up_to", 4, seeds)
     arrival = _expected_metrics(cfg, games)

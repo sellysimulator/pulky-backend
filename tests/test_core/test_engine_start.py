@@ -241,7 +241,7 @@ def test_day_one_supplier_draw_is_made_at_start():
 
 
 def test_brief_has_the_spec_shape_on_day_five_with_defaults():
-    config = cfg(max_players=4)
+    config = cfg(max_players=4, supplier__lead_time_days=1)
     e = start(config, seed=11)
     for _ in range(4):
         play(e)
@@ -363,7 +363,9 @@ def test_brief_follows_the_peak_window_and_transport_switch():
 
 
 def test_ordering_windows_in_the_brief_and_the_view():
-    config = quiet(2, duration_days=7, futures__horizon_days=3)
+    config = quiet(
+        2, duration_days=7, futures__horizon_days=3, supplier__lead_time_days=1
+    )
     e = start(config)
     for day in range(1, 8):
         assert e.day == day
