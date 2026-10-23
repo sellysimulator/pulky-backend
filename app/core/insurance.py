@@ -1,4 +1,4 @@
-"""Incoterm tiers, plan rows and the host calculator maths (spec section 6.3, 6.4)."""
+"""Shipping insurance: tiers, plan rows and the host calculator (spec 6.3, 6.4)."""
 
 import math
 from collections.abc import Mapping
@@ -20,11 +20,12 @@ INSURED_TIERS: tuple[IncotermTier, ...] = INCOTERM_TIERS[1:]
 """The tiers that refund lost units: the host can disable them and set their fees."""
 
 INCOTERM_TIER_LABELS: dict[IncotermTier, str] = {
-    IncotermTier.EXW: "EXW — you carry the risk",
-    IncotermTier.CIP: "CIP + blockchain — refund what you paid",
-    IncotermTier.DAP: "DAP + blockchain — refund at market price",
-    IncotermTier.DDP: "DDP + blockchain — refund at retail price",
+    IncotermTier.EXW: "No insurance — you carry the risk",
+    IncotermTier.CIP: "Paid-price insurance — refund what you paid",
+    IncotermTier.DAP: "Market-price insurance — refund at the arrival-day spot price",
+    IncotermTier.DDP: "Retail-price insurance — refund at the retail price",
 }
+"""Each tier's card label, sent in `tier_plans[].label` (spec section 6.3)."""
 
 REFUND_BASIS: dict[IncotermTier, str] = {
     IncotermTier.EXW: "none",

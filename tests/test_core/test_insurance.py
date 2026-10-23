@@ -56,10 +56,10 @@ def test_tier_order():
 
 def test_tier_labels_verbatim():
     assert INCOTERM_TIER_LABELS == {
-        EXW: "EXW — you carry the risk",
-        CIP: "CIP + blockchain — refund what you paid",
-        DAP: "DAP + blockchain — refund at market price",
-        DDP: "DDP + blockchain — refund at retail price",
+        EXW: "No insurance — you carry the risk",
+        CIP: "Paid-price insurance — refund what you paid",
+        DAP: "Market-price insurance — refund at the arrival-day spot price",
+        DDP: "Retail-price insurance — refund at the retail price",
     }
 
 

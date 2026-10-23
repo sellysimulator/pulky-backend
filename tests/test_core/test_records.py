@@ -69,7 +69,9 @@ def test_message_copy_is_verbatim() -> None:
     assert MSG_UNREADABLE == (
         "Your decision could not be read. Reload the page and try again."
     )
-    assert MSG_TIER_UNAVAILABLE == "That incoterm tier is not available in this game."
+    assert MSG_TIER_UNAVAILABLE == (
+        "That shipping insurance is not available in this game."
+    )
     assert MSG_CONSERVE_INVALID == (
         "You can only conserve lots in your cellar that are not conserved yet."
     )
