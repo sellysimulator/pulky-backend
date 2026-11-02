@@ -66,6 +66,11 @@ message at startup and every signed-in user is rejected.
 
 - The wire events and error codes: spec `12-wire.md`. The frontend consumes them.
 - The REST shapes and error details: spec `13-rest-db.md` section 13.4.
+- End-of-game stats (spec `08-money.md` section 8.6) come from one builder, `app/core/stats.py`
+  `build_stats`, for both `game_finished` and the results API. Each player's `flow` (the summary's flow
+  chart) is built from the day records plus the free initial pipeline, which both callers pass from the
+  game config (`initial_pipeline=lead_time_days * initial_pipeline_qty`); both identities of section 8.6
+  hold by construction, and `tests/test_core/test_stats_flow.py` property-tests them.
 - Shared fixtures in `../docs/plan/fixtures/` are copied unchanged into each repo's
   tests. The backend owns the engine; the frontend only renders what the server sends.
 
