@@ -1003,9 +1003,15 @@ class PulkyEngine:
         for a, p in self._players.items():
             fill, waste = self._fill_waste(a)
             last = p.records[-1] if p.records else None
+            # A game that ran its last day is only FINISHED because every
+            # decision of that day was in, so the host's tracker must read
+            # "submitted" for all of them rather than the "nobody is pending"
+            # False that `has_submitted` gives once the phase is over. An early
+            # end cancels pending decisions, so there it stays False.
+            ran_to_the_end = self._phase == Phase.FINISHED and not self._ended_early
             entry: dict[str, Any] = {
                 "display_name": self._names[a],
-                "has_submitted": self.has_submitted(a),
+                "has_submitted": self.has_submitted(a) or ran_to_the_end,
                 "stock_units": p.cellar.total(),
                 "expected_spoil_tonight": p.cellar.expected_spoil_tonight(),
                 "in_transit_units": sum(s.qty for s in p.pipeline.items()),
