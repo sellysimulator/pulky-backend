@@ -25,6 +25,10 @@ def results_response(game: StoredGame) -> dict:
         display_names=game.display_names,
         starting_reputation=starting,
         seed=game.seed,
+        initial_pipeline=(
+            game.config["supplier"]["lead_time_days"]
+            * game.config["supplier"]["initial_pipeline_qty"]
+        ),
     )
     return {
         "game_id": game.game_id,

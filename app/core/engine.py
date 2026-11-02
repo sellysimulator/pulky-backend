@@ -1060,6 +1060,10 @@ class PulkyEngine:
             display_names=self._names,
             starting_reputation=self._config.reputation.starting,
             seed=self._seed,
+            initial_pipeline=(
+                self._config.supplier.lead_time_days
+                * self._config.supplier.initial_pipeline_qty
+            ),
         )
 
     def results(self) -> dict:

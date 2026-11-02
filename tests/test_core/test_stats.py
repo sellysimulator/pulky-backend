@@ -75,6 +75,7 @@ PLAYER_KEYS = {
     "peak_backlog",
     "incoterm_tier_days",
     "series",
+    "flow",
     "final_settlement",
 }
 PLAYER_SERIES_KEYS = {
