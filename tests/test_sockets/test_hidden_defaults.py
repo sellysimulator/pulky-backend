@@ -15,7 +15,7 @@ from app.services import game_service
 from app.services.state_service import get_state_service
 from app.sockets.handlers.host import end_game_early
 from app.sockets.handlers.lobby import config_update, start_game
-from tests.test_sockets.conftest import HOST_NAME, Game, World
+from tests.test_sockets.conftest import HOST_NAME, Game, World, all_keys
 from tests.test_sockets.test_submit import (  # noqa: F401
     PersistSpy,
     _never_touch_a_real_database,
@@ -198,3 +198,87 @@ def test_validate_warns_about_a_pipeline_without_a_lead_time(
     config["supplier"]["lead_time_days"] = 2
     body = client.post(f"{API}/config/validate", json={"config": config}).json()
     assert body["warnings"] == []
+
+
+def _numbers(payload: Any) -> list[float]:
+    """Every number in a JSON payload, at any depth."""
+    if isinstance(payload, bool):
+        return []
+    if isinstance(payload, int | float):
+        return [float(payload)]
+    if isinstance(payload, dict):
+        return [n for v in payload.values() for n in _numbers(v)]
+    if isinstance(payload, list):
+        return [n for v in payload for n in _numbers(v)]
+    return []
+
+
+def test_config_preview_never_reveals_a_hidden_default(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Failure mode: a preview endpoint computing a figure from a blank risk's
+    # default. Every figure that needs one is null, and changing the defaults
+    # changes nothing in the answer.
+    url = f"{API}/config/preview"
+    blank = client.post(url, json={"config": host_default_config()}).json()["preview"]
+    assert blank["hidden"] == sorted(HIDDEN_DEFAULT_KEYS)
+    assert blank["supplier"]["capacity_band"] is None
+    assert blank["supplier"]["disruptions"] is None
+    assert blank["transport"]["failures"] is None
+    assert blank["transport"]["loss_table"] is None
+    assert blank["calculator"]["known"] is False
+    assert all(t["solo"] is None for t in blank["calculator"]["tiers"])
+
+    from app.core import defaults as defaults_mod
+
+    supplier = dict(defaults_mod.DEFAULT_CONFIG["supplier"])
+    transport = dict(defaults_mod.DEFAULT_CONFIG["transport"])
+    supplier.update(capacity_sd_per_player=6.66, disruption_probability=0.222)
+    transport.update(failure_probability=0.333, loss_fraction=0.444)
+    monkeypatch.setitem(defaults_mod.DEFAULT_CONFIG, "supplier", supplier)
+    monkeypatch.setitem(defaults_mod.DEFAULT_CONFIG, "transport", transport)
+    again = client.post(url, json={"config": host_default_config()}).json()["preview"]
+    assert again == blank
+    for value in (6.66, 0.222, 0.333, 0.444):
+        assert value not in _numbers(again)
+
+    # typed risks are the host's own, so their figures show
+    typed = host_default_config()
+    typed["transport"].update(failure_probability=0.14, loss_fraction=0.3)
+    shown = client.post(url, json={"config": typed}).json()["preview"]
+    assert shown["calculator"]["known"] is True
+    assert shown["transport"]["failures"] is not None
+
+
+def test_config_preview_of_an_invalid_draft_is_null(client: TestClient) -> None:
+    config = host_default_config()
+    config["stock"]["fresh_days"] = 5  # not below max_days
+    body = client.post(f"{API}/config/preview", json={"config": config}).json()
+    assert body == {"preview": None}
+
+
+@aio
+async def test_a_decision_preview_carries_no_risk_odds(world: World) -> None:
+    from app.sockets.handlers.play import preview_decision
+
+    game = await hidden_game(world)
+    before = world.mark()
+    decision = {
+        "day": 1,
+        "order_spot": 20,
+        "order_futures": 5,
+        "incoterm_tier": "ddp",
+        "conserve_lots": [],
+        "cooperate": False,
+        "peer_buy": None,
+        "peer_sell": {"price": 15.0, "max_quality": 100, "max_units": 5},
+    }
+    answer = await preview_decision(
+        game.sids["P1"], {"room_id": game.code, "decision": decision}
+    )
+    assert world.mark() == before  # an acknowledgement only, never an emit
+    keys = set(all_keys(answer))
+    for path in HIDDEN_DEFAULT_KEYS:
+        assert path.rsplit(".", 1)[1] not in keys
+    assert "capacity" not in keys
+    assert not full_configs(answer)

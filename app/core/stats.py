@@ -29,6 +29,17 @@ def rank_players(
     return sorted(totals, key=key)
 
 
+def cumulative_profits(recs: Sequence[DayRecord]) -> list[float]:
+    """Profit so far after each day, in cents (spec 8.6 ``series.cumulative_profit``):
+    the profit race's points, before the final settlement."""
+    out: list[float] = []
+    running = 0.0
+    for r in recs:
+        running += r.profit
+        out.append(round_cents(running))
+    return out
+
+
 def _ratio(numerator: float, denominator: float) -> float | None:
     return None if denominator == 0 else numerator / denominator
 
@@ -140,6 +151,7 @@ def _player_stats(
             "closing_stock": [r.closing_stock for r in recs],
             "reputation": reputations,
             "profit": [r.profit for r in recs],
+            "cumulative_profit": cumulative_profits(recs),
             "cooperate": [r.cooperate for r in recs],
         },
         "flow": _flow(recs, initial_pipeline),

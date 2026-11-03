@@ -87,6 +87,29 @@ message at startup and every signed-in user is rejected.
 - The Paid-price card's `tier_plans[].refund_value_today` comes from
   `insurance.shipment_unit_cost`, the function the engine prices shipments with (spec
   6.3); any change to how a shipment is priced changes both at once.
+- **The server computes every figure a screen shows** (spec §0.5 invariant 7, D54). The
+  frontend holds no game formula; a figure it needs is a payload field or a preview field
+  here, built from the engine's own functions, never a second implementation:
+  - `preview_decision` (`app/sockets/handlers/play.py`, answered as the socket
+    acknowledgement; `PulkyEngine.decision_preview`): outlay (`outlay_parts`), the gate
+    (`affordable`, the one `submit` uses), tier cards for the draft (`plan_rows`, so the
+    Paid-price card follows the typed spot order), offer (`offer_lots`, the one the peer
+    market uses) and field messages (`records.decision_field_issues`, the checks
+    `parse_decision` makes). Read-only: no lock, no save, no emit.
+  - `POST /config/preview` (`app/core/previews.py` `config_preview`): every number of the
+    host screen's previews, calculator and help examples. It replaces each blank hidden
+    default with 0 before computing and nulls every figure that needs it; never fill a
+    hidden default in there (`tests/test_sockets/test_hidden_defaults.py` checks the
+    answer does not change when the defaults do).
+  - Also served: cellar `days_left` / `conservation_cost`, guide `days_left`
+    (`lots.guide_rows`), brief `arrives_weekday` / `delivery_weekday`, host `spot_range`
+    and `cumulative_profit_by_day`, results `series.cumulative_profit`.
+  - When a figure or a default changes, regenerate the frontend's
+    `src/__tests__/fixtures/config_preview.json` (recorded `config_preview` answers) and
+    `config_defaults.json`.
+- The balance harness (`python -m app.tools.balance`, spec 13.14) plays 1,000 seeds by
+  default; target 3's sd clause has a 1% tolerance and target 6 is measured on cut-arrival
+  days, so every target is meaningful at the default lead time of 0.
 
 ## Gotchas
 

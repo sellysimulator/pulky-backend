@@ -143,7 +143,10 @@ def test_initial_stock_is_lot_l0_at_quality_max():
     lot = Lot("L0", 25, 0, 12.0, 90, 2, 5, False)
     for alias in e.aliases:
         view = e.player_view(alias)
-        assert view["cellar"] == Cellar([lot]).view(1)
+        assert view["cellar"] == [
+            {**row, "conservation_cost": round_cents(1.0 * 25)}
+            for row in Cellar([lot]).view(1)
+        ]
         assert view["stock_by_age"] == Cellar([lot]).stock_by_age()
         assert view["cellar"][0]["initial_quality"] == 90
         assert view["cellar"][0]["unit_cost"] == 12.0
@@ -287,12 +290,13 @@ def test_brief_has_the_spec_shape_on_day_five_with_defaults():
         "base_price": 12.0,
         "lead_time_days": 1,
     }
-    assert brief["spot"] == {"open": True, "arrives_day": 6}
+    assert brief["spot"] == {"open": True, "arrives_day": 6, "arrives_weekday": "sat"}
     assert brief["futures"] == {
         "open": True,
         "price": 12.0,
         "horizon_days": 7,
         "delivery_day": 12,
+        "delivery_weekday": "fri",
         "last_day_to_buy": 7,
         "days_left_to_buy": 3,
     }

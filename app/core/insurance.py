@@ -136,6 +136,24 @@ def plan_rows(
     return rows
 
 
+def reference_units_lost(
+    loss_fraction: float, *, shared: bool, n_ref: int, reference_shipment: int
+) -> int:
+    """Spec 6.4: units a failure destroys from the reference shipment,
+    ``floor(u_ref × L_eff)``, with the engine's rounding."""
+    loss_eff = loss_fraction / n_ref if shared else loss_fraction
+    return math.floor(reference_shipment * loss_eff + 1e-9)
+
+
+def reference_refund_value(
+    tier: IncotermTier, *, base_price: float, retail_price: float
+) -> float:
+    """Spec 6.4's value(tier): what the calculator expects a lost unit to refund."""
+    if tier == IncotermTier.EXW:
+        return 0.0
+    return retail_price if tier == IncotermTier.DDP else base_price
+
+
 def break_even_fee(
     tier: IncotermTier,
     *,
@@ -149,13 +167,16 @@ def break_even_fee(
 ) -> float:
     if tier == IncotermTier.EXW or reference_shipment <= 0:
         return 0.0
-    loss_eff = loss_fraction / n_ref if shared else loss_fraction
-    lost_per_unit = (
-        failure_probability
-        * math.floor(reference_shipment * loss_eff + 1e-9)
-        / reference_shipment
+    lost = reference_units_lost(
+        loss_fraction,
+        shared=shared,
+        n_ref=n_ref,
+        reference_shipment=reference_shipment,
     )
-    value = retail_price if tier == IncotermTier.DDP else base_price
+    lost_per_unit = failure_probability * lost / reference_shipment
+    value = reference_refund_value(
+        tier, base_price=base_price, retail_price=retail_price
+    )
     return lost_per_unit * value
 
 

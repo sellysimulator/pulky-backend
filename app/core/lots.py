@@ -37,6 +37,15 @@ def days_left(age: int, fresh_days: int, max_days: int, initial_quality: int) ->
     return a_star - age
 
 
+def guide_rows(day: int, fresh_days: int, max_days: int) -> list[dict]:
+    """The quality guide as the screens show it (spec 3.5): each row with the days a
+    unit of that quality can still be sold, counting ``day``."""
+    return [
+        {**row, "days_left": row["last_day"] - day + 1}
+        for row in quality_guide(day, fresh_days, max_days)
+    ]
+
+
 def quality_guide(day: int, fresh_days: int, max_days: int) -> list[dict]:
     """Half-spoiled day and last day per quality, 100% down to 0% (spec 3.5)."""
     ramp = max_days - fresh_days
@@ -217,6 +226,7 @@ class Cellar:
                     "initial_quality": lot.initial_quality,
                     "conserved": lot.conserved,
                     "quality": lot.quality(),
+                    "days_left": lot.days_left(),
                     "last_day": day + lot.days_left() - 1,
                     "risk_tonight": round(risk, 4),
                     "expected_loss_tonight": round(lot.qty * risk, 2),

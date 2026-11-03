@@ -9,6 +9,13 @@ def triangle_kernel(current: float, preferred: float, denominator: float) -> flo
     return min(1.0, max(0.0, 1 - abs(current - preferred) / denominator))
 
 
+def weekday_reach(peak_from: Weekday, peak_to: Weekday) -> int:
+    """Spec 7.1: one more than the farthest a weekday can be from the window."""
+    start = WEEKDAYS.index(peak_from) + 1
+    end = WEEKDAYS.index(peak_to) + 1
+    return max(start - 1, 7 - end) + 1
+
+
 def weekday_multiplier(weekday: Weekday, peak_from: Weekday, peak_to: Weekday) -> float:
     w = WEEKDAYS.index(weekday) + 1
     start = WEEKDAYS.index(peak_from) + 1
@@ -21,8 +28,7 @@ def weekday_multiplier(weekday: Weekday, peak_from: Weekday, peak_to: Weekday) -
         dist = start - w
     else:
         dist = w - end
-    reach = max(start - 1, 7 - end) + 1
-    return triangle_kernel(dist, 0, reach)
+    return triangle_kernel(dist, 0, weekday_reach(peak_from, peak_to))
 
 
 def weekday_multipliers(peak_from: Weekday, peak_to: Weekday) -> dict[Weekday, float]:

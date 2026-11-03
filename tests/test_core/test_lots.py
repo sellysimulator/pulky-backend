@@ -693,6 +693,7 @@ def test_view_shape_and_roundings() -> None:
         "initial_quality",
         "conserved",
         "quality",
+        "days_left",
         "last_day",
         "risk_tonight",
         "expected_loss_tonight",
@@ -704,6 +705,7 @@ def test_view_shape_and_roundings() -> None:
     assert row["initial_quality"] == 100
     assert row["conserved"] is False
     assert row["quality"] == 67
+    assert row["days_left"] == 3  # days 5, 6 and 7, counting today
     assert row["last_day"] == 7
     assert row["risk_tonight"] == 0.3333
     assert row["expected_loss_tonight"] == 3333.33
