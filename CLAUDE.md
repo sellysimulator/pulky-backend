@@ -114,7 +114,8 @@ message at startup and every signed-in user is rejected.
     `config_defaults.json`.
 - The balance harness (`python -m app.tools.balance`, spec 13.14) plays 1,000 seeds by
   default; target 3's sd clause has a 1% tolerance and target 6 is measured on cut-arrival
-  days, so every target is meaningful at the default lead time of 0.
+  days, so every target is meaningful at the default lead time of 0. Target 7 is expected
+  at lead times 0 and 1 only (spec 13.14, D55): from 2, a run reports it FAIL by design.
 
 ## Gotchas
 

@@ -512,7 +512,7 @@ def check_targets(
                 f"{_fmt(naive.offpeak_backlog_mean)}",
             )
         )
-    # 7
+    # 7: expected at lead times 0 and 1 only (spec 13.14, D55); the CLI runs L = 0
     if trader is None or base is None:
         out.append(missing(7, "trader and order_up_to"))
     elif (
