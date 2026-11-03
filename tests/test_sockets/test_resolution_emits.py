@@ -373,3 +373,23 @@ async def test_finish_emits_nothing_when_persistence_returns_none(
     assert room["persisted"] is False
     assert room["game_id"] == before["game_id"]
     assert room["seq"] == before["seq"]
+
+
+@aio
+async def test_host_last_state_marks_all_submitted_when_final_day_ends_game(
+    world: World,
+) -> None:
+    """The last submission of the final day finishes the game; the host's last
+    host_state must show every player as submitted, not "still deciding"."""
+    game = await world.running_game(SHORT, players=3)
+    for day in range(1, 7):
+        await play_day(game, day)
+    await last_submit(world, game, 7)
+    assert (await world.room(game.code))["state"] == "finished"
+    host = world.last(game.host_sid, "host_state")
+    assert host["phase"] == "finished"
+    assert {a: p["has_submitted"] for a, p in host["players"].items()} == {
+        "P1": True,
+        "P2": True,
+        "P3": True,
+    }

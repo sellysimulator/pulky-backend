@@ -29,8 +29,46 @@ def rank_players(
     return sorted(totals, key=key)
 
 
+def cumulative_profits(recs: Sequence[DayRecord]) -> list[float]:
+    """Profit so far after each day, in cents (spec 8.6 ``series.cumulative_profit``):
+    the profit race's points, before the final settlement."""
+    out: list[float] = []
+    running = 0.0
+    for r in recs:
+        running += r.profit
+        out.append(round_cents(running))
+    return out
+
+
 def _ratio(numerator: float, denominator: float) -> float | None:
     return None if denominator == 0 else numerator / denominator
+
+
+def _flow(recs: Sequence[DayRecord], initial_pipeline: int) -> dict[str, int]:
+    shipped_spot = sum(r.allocated_spot for r in recs)
+    shipped_futures = sum(r.futures_filled for r in recs)
+    lost_transport = sum(r.lost_transport for r in recs)
+    delivered = sum(r.delivered for r in recs)
+    return {
+        "initial_stock": recs[0].opening_stock if recs else 0,
+        "initial_pipeline": initial_pipeline,
+        "shipped_spot": shipped_spot,
+        "shipped_futures": shipped_futures,
+        "lost_transport": lost_transport,
+        "in_transit_end": (
+            initial_pipeline
+            + shipped_spot
+            + shipped_futures
+            - lost_transport
+            - delivered
+        ),
+        "delivered": delivered,
+        "peer_bought": sum(r.peer_bought for r in recs),
+        "sold": sum(r.sold for r in recs),
+        "peer_sold": sum(r.peer_sold for r in recs),
+        "spoiled": sum(r.spoiled for r in recs),
+        "closing_stock": recs[-1].closing_stock if recs else 0,
+    }
 
 
 def _player_stats(
@@ -40,6 +78,7 @@ def _player_stats(
     display_name: str,
     starting_reputation: float,
     total_sold_all: int,
+    initial_pipeline: int,
 ) -> dict:
     units_sold = sum(r.sold for r in recs)
     units_spoiled = sum(r.spoiled for r in recs)
@@ -112,8 +151,10 @@ def _player_stats(
             "closing_stock": [r.closing_stock for r in recs],
             "reputation": reputations,
             "profit": [r.profit for r in recs],
+            "cumulative_profit": cumulative_profits(recs),
             "cooperate": [r.cooperate for r in recs],
         },
+        "flow": _flow(recs, initial_pipeline),
         "final_settlement": settlement.to_payload(),
     }
 
@@ -178,6 +219,7 @@ def build_stats(
     display_names: Mapping[str, str],
     starting_reputation: float,
     seed: int,
+    initial_pipeline: int = 0,
 ) -> dict:
     """The one builder of end-of-game statistics (spec §8.6)."""
     total_sold_all = sum(r.sold for recs in records.values() for r in recs)
@@ -190,6 +232,7 @@ def build_stats(
             name,
             starting_reputation,
             total_sold_all,
+            initial_pipeline,
         )
     order = rank_players(
         {

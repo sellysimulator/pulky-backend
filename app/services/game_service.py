@@ -17,7 +17,9 @@ def load_engine(room: dict) -> PulkyEngine | None:
     payload = room.get("engine")
     if not payload:
         return None
-    return PulkyEngine.from_payload(payload, GameConfig.from_dict(room["config"]))
+    return PulkyEngine.from_payload(
+        payload, GameConfig.from_host_config(room["config"])
+    )
 
 
 def store_engine(room: dict, engine: PulkyEngine) -> None:
@@ -57,11 +59,18 @@ def host_state(room: dict, seq: int, full: bool) -> dict:
     for alias, entry in view["players"].items():
         participant = room["participants"].get(alias)
         entry["connected"] = bool(participant and participant["connected"])
-    return {"seq": seq, "full": full, **view, "state": room["state"]}
+    # The host's config, never the engine's: a hidden default stays null (spec 9.3).
+    return {
+        "seq": seq,
+        "full": full,
+        **view,
+        "config": room["config"],
+        "state": room["state"],
+    }
 
 
 def _game_started(room: dict, seq: int) -> dict:
-    config = GameConfig.from_dict(room["config"])
+    config = GameConfig.from_host_config(room["config"])
     return {
         "seq": seq,
         "duration_days": config.duration_days,
@@ -78,7 +87,8 @@ def _game_started(room: dict, seq: int) -> dict:
 
 
 def start(room: dict, next_seq: Callable[[dict], int]) -> list[Emit]:
-    config = GameConfig.from_dict(room["config"])
+    # The engine runs on the full config: the hidden defaults filled in (spec 9.3).
+    config = GameConfig.from_host_config(room["config"])
     seed = config.random_seed
     if seed is None:
         seed = secrets.SystemRandom().randrange(2**53)

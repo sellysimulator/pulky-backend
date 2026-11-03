@@ -54,6 +54,19 @@ def tier_fee(
     return tier_terms.fee
 
 
+def shipment_unit_cost(
+    spot_units: int, spot_price: float, futures_units: int, base_price: float
+) -> float:
+    """A shipment's average price paid (spec 5.6): what Paid-price insurance refunds
+    per lost unit, since a lost unit is not traced to spot or futures. The engine
+    prices every shipment with it, and the Paid-price card shows its value for today's
+    shipment (spec 6.3). 0 when nothing ships."""
+    shipped = spot_units + futures_units
+    if shipped <= 0:
+        return 0.0
+    return (spot_price * spot_units + base_price * futures_units) / shipped
+
+
 def refund_value(
     tier: IncotermTier,
     *,
@@ -74,8 +87,24 @@ def plan_rows(
     terms: Mapping[IncotermTier, InsuredTierTerms],
     *,
     today_spot_price: float,
+    base_price: float,
     retail_price: float,
+    spot_units: int,
+    futures_units: int,
+    lead_time_days: int,
 ) -> list[dict[str, Any]]:
+    """The tier cards (spec 6.3, 12.4). ``refund_value_today`` is what the engine
+    would refund per lost unit of today's shipment: ``futures_units`` due to ship
+    today plus a spot order of ``spot_units``, both filled in full."""
+    # With no futures due, every unit of the shipment is a spot unit, so the refund
+    # is the spot price whatever the spot order: one unit stands for any order.
+    paid_spot = spot_units if futures_units > 0 else max(spot_units, 1)
+    paid = shipment_unit_cost(paid_spot, today_spot_price, futures_units, base_price)
+    paid_shipment = (
+        {"spot_units": spot_units, "futures_units": futures_units}
+        if futures_units > 0
+        else None
+    )
     rows: list[dict[str, Any]] = []
     for tier in INCOTERM_TIERS:
         if tier == IncotermTier.EXW:
@@ -85,8 +114,12 @@ def plan_rows(
             enabled = terms[tier].enabled
             fee = terms[tier].fee
         today: float | None = None
+        shipment: dict[str, int] | None = None
         if tier == IncotermTier.CIP:
-            today = today_spot_price
+            today = paid
+            shipment = paid_shipment
+        elif tier == IncotermTier.DAP and lead_time_days == 0:
+            today = today_spot_price  # the shipment arrives today
         elif tier == IncotermTier.DDP:
             today = retail_price
         rows.append(
@@ -96,10 +129,29 @@ def plan_rows(
                 "enabled": enabled,
                 "refund_basis": REFUND_BASIS[tier],
                 "refund_value_today": today,
+                "refund_shipment": shipment,
                 "fee_per_unit": fee,
             }
         )
     return rows
+
+
+def reference_units_lost(
+    loss_fraction: float, *, shared: bool, n_ref: int, reference_shipment: int
+) -> int:
+    """Spec 6.4: units a failure destroys from the reference shipment,
+    ``floor(u_ref × L_eff)``, with the engine's rounding."""
+    loss_eff = loss_fraction / n_ref if shared else loss_fraction
+    return math.floor(reference_shipment * loss_eff + 1e-9)
+
+
+def reference_refund_value(
+    tier: IncotermTier, *, base_price: float, retail_price: float
+) -> float:
+    """Spec 6.4's value(tier): what the calculator expects a lost unit to refund."""
+    if tier == IncotermTier.EXW:
+        return 0.0
+    return retail_price if tier == IncotermTier.DDP else base_price
 
 
 def break_even_fee(
@@ -115,13 +167,16 @@ def break_even_fee(
 ) -> float:
     if tier == IncotermTier.EXW or reference_shipment <= 0:
         return 0.0
-    loss_eff = loss_fraction / n_ref if shared else loss_fraction
-    lost_per_unit = (
-        failure_probability
-        * math.floor(reference_shipment * loss_eff + 1e-9)
-        / reference_shipment
+    lost = reference_units_lost(
+        loss_fraction,
+        shared=shared,
+        n_ref=n_ref,
+        reference_shipment=reference_shipment,
     )
-    value = retail_price if tier == IncotermTier.DDP else base_price
+    lost_per_unit = failure_probability * lost / reference_shipment
+    value = reference_refund_value(
+        tier, base_price=base_price, retail_price=retail_price
+    )
     return lost_per_unit * value
 
 

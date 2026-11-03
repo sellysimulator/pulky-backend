@@ -6,7 +6,12 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.config_models import GameConfig, config_schema, validate_config
+from app.core.config_models import (
+    GameConfig,
+    config_schema,
+    host_default_config,
+    validate_config,
+)
 from app.core.defaults import DEFAULT_CONFIG
 from app.services import state_service
 
@@ -38,7 +43,7 @@ def test_defaults_equal_config_schema(client: TestClient) -> None:
 
 def test_defaults_carry_levels_and_limits(client: TestClient) -> None:
     body = client.get(DEFAULTS).json()
-    assert body["config"] == DEFAULT_CONFIG
+    assert body["config"] == host_default_config()
     assert body["fields"]["demand.retail_price"]["players"] == "shown"
     assert body["fields"]["random_seed"]["players"] == "secret"
     assert body["limits"]["MAX_PLAYERS"] == 12

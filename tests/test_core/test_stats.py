@@ -75,6 +75,7 @@ PLAYER_KEYS = {
     "peak_backlog",
     "incoterm_tier_days",
     "series",
+    "flow",
     "final_settlement",
 }
 PLAYER_SERIES_KEYS = {
@@ -87,6 +88,7 @@ PLAYER_SERIES_KEYS = {
     "closing_stock",
     "reputation",
     "profit",
+    "cumulative_profit",
     "cooperate",
 }
 MARKET_KEYS = {
@@ -1234,3 +1236,20 @@ def test_fm9_peer_average_is_value_over_units_not_mean_of_daily_averages() -> No
     avg = peer_example()["market"]["avg_peer_price"]
     assert avg == pytest.approx(14.9, **APPROX)
     assert avg != pytest.approx(14.75, abs=1e-6)
+
+
+def test_cumulative_profit_is_the_running_total_to_the_cent() -> None:
+    # The profit race's points (spec 8.6): the client sums nothing.
+    records, _, settlements, out = random_data(7)
+    for alias, recs in records.items():
+        series = out["players"][alias]["series"]
+        running = 0.0
+        expected = []
+        for r in recs:
+            running += r.profit
+            expected.append(round_cents(running))
+        assert series["cumulative_profit"] == expected
+        # the race ends at total_profit once the final settlement is added
+        assert round_cents(
+            series["cumulative_profit"][-1] + settlements[alias].settlement_total
+        ) == pytest.approx(out["players"][alias]["total_profit"])

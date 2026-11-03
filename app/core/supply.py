@@ -63,6 +63,14 @@ class AbstractSupplier:
         return SupplierDay(capacity=cap, disrupted=disrupted, spot_price=spot)
 
 
+def spot_range(base_price: float, spot_spread: float) -> dict[str, float]:
+    """The cheapest and dearest spot price the supplier can draw (spec 5.1)."""
+    return {
+        "low": round_cents(base_price * (1 - spot_spread)),
+        "high": round_cents(base_price * (1 + spot_spread)),
+    }
+
+
 def _check(requests: Mapping[str, int], capacity: int) -> None:
     if capacity < 0:
         raise ValueError("capacity must be >= 0")

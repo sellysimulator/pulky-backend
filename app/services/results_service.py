@@ -25,6 +25,10 @@ def results_response(game: StoredGame) -> dict:
         display_names=game.display_names,
         starting_reputation=starting,
         seed=game.seed,
+        initial_pipeline=(
+            game.config["supplier"]["lead_time_days"]
+            * game.config["supplier"]["initial_pipeline_qty"]
+        ),
     )
     return {
         "game_id": game.game_id,
@@ -37,4 +41,7 @@ def results_response(game: StoredGame) -> dict:
         "finished_at": iso_utc(game.finished_at),
         "leaderboard": stats["leaderboard"],
         "stats": {"players": stats["players"], "market": stats["market"]},
+        # The game is over: the full config it ran with, hidden defaults included
+        # (spec 9.3, 13.4).
+        "config": game.config,
     }

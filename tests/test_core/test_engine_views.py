@@ -13,7 +13,7 @@ from app.core.engine import PulkyEngine
 from app.core.enums import IncotermTier, Phase, Weekday
 from app.core.insurance import plan_rows
 from app.core.kernels import weekday_multiplier
-from app.core.lots import Cellar, Lot, quality_guide
+from app.core.lots import Cellar, Lot, guide_rows
 from app.core.money import round_cents
 from app.core.records import (
     Decision,
@@ -122,9 +122,11 @@ CELLAR_KEYS = {
     "initial_quality",
     "conserved",
     "quality",
+    "days_left",
     "last_day",
     "risk_tonight",
     "expected_loss_tonight",
+    "conservation_cost",
 }
 YESTERDAY_KEYS = {
     "day",
@@ -160,7 +162,7 @@ HOST_BASE = {
     "phase",
     "brief",
     "seed",
-    "config",
+    "spot_range",
     "awaiting",
     "players",
     "leaderboard",
@@ -256,7 +258,12 @@ def test_player_view_cellar_entries_match_the_cellar_view():
     e = start(config)
     v = e.player_view("P1")
     lot = Lot("L0", 30, 0, 12.0, 90, 0, 3, False)
-    assert v["cellar"] == Cellar([lot]).view(1)
+    # the cellar's own rows, plus what conserving each lot costs today (spec 3.4)
+    cost = config.stock.conservation_cost_per_unit
+    assert v["cellar"] == [
+        {**row, "conservation_cost": round_cents(cost * row["qty"])}
+        for row in Cellar([lot]).view(1)
+    ]
     assert set(v["cellar"][0]) == CELLAR_KEYS
     assert v["stock_by_age"] == Cellar([lot]).stock_by_age()
     assert v["expected_spoil_tonight"] == Cellar([lot]).expected_spoil_tonight()
@@ -284,7 +291,7 @@ def test_section_3_5_example_qualities_and_last_days_through_the_engine():
             x["qty"] * x["risk_tonight"], abs=0.01
         )
     guide = e.player_view("P3")["quality_guide"]
-    assert guide == quality_guide(5, 0, 3)
+    assert guide == guide_rows(5, 0, 3)
     by_quality = {row["quality"]: row for row in guide}
     assert (by_quality[90]["half_spoiled_day"], by_quality[90]["last_day"]) == (7, 8)
     assert (by_quality[50]["half_spoiled_day"], by_quality[50]["last_day"]) == (5, 7)
@@ -294,7 +301,7 @@ def test_section_3_5_example_qualities_and_last_days_through_the_engine():
 def test_quality_guide_is_empty_when_the_peer_market_is_off():
     on = start(quiet(2)).player_view("P1")
     off = start(quiet(2, peer_market__enabled=False)).player_view("P1")
-    assert on["quality_guide"] == quality_guide(1, 0, 3)
+    assert on["quality_guide"] == guide_rows(1, 0, 3)
     assert len(on["quality_guide"]) == 21
     assert off["quality_guide"] == []
 
@@ -305,7 +312,11 @@ def test_insurance_plans_come_from_the_tier_terms_and_todays_spot_price():
     expected = plan_rows(
         config.tier_terms(),
         today_spot_price=e.brief()["supplier"]["spot_price"],
+        base_price=12.0,
         retail_price=30.0,
+        spot_units=0,
+        futures_units=0,
+        lead_time_days=config.supplier.lead_time_days,
     )
     assert e.player_view("P1")["tier_plans"] == expected
     assert [row["enabled"] for row in expected].count(False) >= 1
@@ -559,12 +570,15 @@ def test_host_view_day_one_keys_and_values():
     assert set(v) == HOST_BASE | {"public_history", "market_history"}
     assert (v["day"], v["duration_days"], v["weekday"]) == (1, 14, "mon")
     assert v["phase"] == "deciding" and v["seed"] == 11
-    assert v["config"] == config.to_dict()
+    # The room adds the host's config (spec 12.5); the engine's full one never
+    # reaches the host before the end.
+    assert "config" not in v
     assert v["brief"] == e.brief() and v["awaiting"] == ["P1", "P2"]
     assert v["public_history"] == [] and v["market_history"] == []
     assert v["leaderboard"] == e.standings()["leaderboard"]
+    assert v["spot_range"] == {"low": 12.0, "high": 12.0}  # quiet: no spread
     for alias, p in v["players"].items():
-        assert set(p) == HOST_PLAYER_BASE | {"own_history"}
+        assert set(p) == HOST_PLAYER_BASE | {"own_history", "cumulative_profit_by_day"}
         assert p["display_name"] == e.display_names[alias]
         assert p["has_submitted"] is False
         assert p["stock_units"] == 30 and p["in_transit_units"] == 0
@@ -638,7 +652,8 @@ def test_host_daily_form_swaps_histories_for_the_last_entries():
     for alias, p in daily["players"].items():
         assert set(p) == HOST_PLAYER_BASE | {"last_record"}
         assert p["last_record"] == e.records(alias)[-1].to_payload()
-        rest = {k: v for k, v in full["players"][alias].items() if k != "own_history"}
+        history = ("own_history", "cumulative_profit_by_day")
+        rest = {k: v for k, v in full["players"][alias].items() if k not in history}
         assert {k: v for k, v in p.items() if k != "last_record"} == rest
     top = ("last_market_day", "players", "public_history", "market_history")
     assert {k: v for k, v in daily.items() if k not in top} == {
@@ -721,10 +736,15 @@ def test_secret_config_keys_and_values_never_reach_a_player():
         assert "config" not in view
         for wanted in forbidden_values:
             assert not has_value(view, wanted, tol=0.0051), wanted
-    # control: the host view carries all of it
+    # The engine's host view carries no config at all (the room adds the host's
+    # config, spec 12.5), only the seed; the end reveals the full config.
     host = e.host_view()
-    assert has_key(host, SECRET_LEAVES - {"random_seed"})
-    assert has_value(host, 0.137) and has_value(host, seed)
+    assert not has_key(host, SECRET_LEAVES)
+    assert has_value(host, seed)
+    while e.phase != Phase.FINISHED:
+        play(e)
+    assert e.results()["config"] == config.to_dict()
+    assert has_value(e.results(), 0.137)
 
 
 def test_cellar_entries_never_carry_shelf_life_fields():
@@ -767,7 +787,8 @@ def test_results_are_available_only_once_the_game_is_finished():
         play(e)
     assert e.phase == Phase.FINISHED
     res = e.results()
-    assert set(res) == {"days_played", "ended_early", "leaderboard", "stats"}
+    assert set(res) == {"days_played", "ended_early", "leaderboard", "stats", "config"}
+    assert res["config"] == e.config.to_dict()
     assert res["days_played"] == 7 and res["ended_early"] is False
     standings = e.standings()
     assert res["leaderboard"] == standings["leaderboard"]
@@ -822,3 +843,17 @@ def test_demand_share_example_of_the_spec():
     for alias in ("P2", "P3", "P4"):
         assert e.player_view(alias)["expected_demand_own"] == 23.26
     assert e.brief()["reputation"]["P1"] == pytest.approx(0.8, abs=0.005)
+
+
+def test_host_full_view_carries_each_players_profit_race():
+    # The host's live profit race (spec 12.5): the server's running totals.
+    config = quiet(2)
+    e = start(config, seed=9)
+    play(e, {"P1": D(1, 10), "P2": D(1, 3)})
+    play(e, {"P1": D(2, 10), "P2": D(2, 3)})
+    full = e.host_view()
+    for alias in e.aliases:
+        race = full["players"][alias]["cumulative_profit_by_day"]
+        assert race == e.standings()["players"][alias]["series"]["cumulative_profit"]
+        assert race[-1] == full["players"][alias]["cumulative_profit"]
+    assert "cumulative_profit_by_day" not in e.host_view(full=False)["players"]["P1"]

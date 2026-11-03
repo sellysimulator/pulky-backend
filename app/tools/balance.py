@@ -342,20 +342,19 @@ def evaluate(
         dis_days += len(disrupted)
         trade_days += sum(1 for m in disrupted if m.peer_units > 0)
         last = max(market)
-        arrivals = [
-            m.day + lead
-            for m in disrupted
-            if m.day + lead <= last and not market[m.day + lead].disrupted
-        ]
+        # A shipment cut on day d arrives on d + L: the disruption day itself at
+        # L = 0 (spec 13.14 target 6). The baseline is the days of the same
+        # weekdays on which no cut shipment arrives.
+        arrivals = {m.day + lead for m in disrupted if m.day + lead <= last}
         arrival_weekdays = {market[t].weekday for t in arrivals}
         for alias in engine.aliases:
             for rec in engine.records(alias):
                 if market[rec.day].disrupted:
                     dis_fill.append(rec.fill)
-                else:
-                    if rec.weekday in arrival_weekdays and rec.day not in arrivals:
-                        normal_sold.append(rec.sold)
-                dis_sold.extend([rec.sold] * arrivals.count(rec.day))
+                if rec.day in arrivals:
+                    dis_sold.append(rec.sold)
+                elif rec.weekday in arrival_weekdays:
+                    normal_sold.append(rec.sold)
                 peak = weekday_multiplier(rec.weekday, window.from_, window.to) == 1.0
                 (peak_backlog if peak else off_backlog).append(rec.backlog_end)
     return StrategyResult(
@@ -379,6 +378,14 @@ def evaluate(
 
 
 # --------------------------------------------------------------------- targets
+
+
+DEFAULT_SEEDS = 1000
+"""Seeds a run plays by default (spec 13.14)."""
+
+HEDGER_SD_TOLERANCE = 1.01
+"""Target 3: the hedger's profit sd counts as lower below 1.01 x order_up_to's, the
+seed noise of that difference at DEFAULT_SEEDS (spec 13.14)."""
 
 
 def _fmt(x: float | None) -> str:
@@ -431,7 +438,7 @@ def check_targets(
         gap = abs(hedger.profit_mean - base.profit_mean)
         ok = (
             gap <= 0.05 * abs(base.profit_mean)
-            and hedger.profit_sd < base.profit_sd
+            and hedger.profit_sd < HEDGER_SD_TOLERANCE * base.profit_sd
             and hedger.disruption_fill_mean > base.disruption_fill_mean
         )
         out.append(
@@ -440,7 +447,8 @@ def check_targets(
                 ok,
                 f"hedger profit {_fmt(hedger.profit_mean)} vs "
                 f"{_fmt(base.profit_mean)}, "
-                f"sd {_fmt(hedger.profit_sd)} vs {_fmt(base.profit_sd)}, disruption "
+                f"sd {_fmt(hedger.profit_sd)} vs {_fmt(base.profit_sd)} "
+                f"(need < {HEDGER_SD_TOLERANCE}x), disruption "
                 f"fill {_fmt(hedger.disruption_fill_mean)} vs "
                 f"{_fmt(base.disruption_fill_mean)}",
             )
@@ -498,13 +506,13 @@ def check_targets(
             TargetResult(
                 6,
                 ok,
-                f"order_up_to sold {_fmt(base.disruption_sold_mean)} on disruption "
+                f"order_up_to sold {_fmt(base.disruption_sold_mean)} on cut-arrival "
                 f"days vs {_fmt(base.normal_sold_mean)} normal; naive backlog peak "
                 f"{_fmt(naive.peak_backlog_mean)} vs off-peak "
                 f"{_fmt(naive.offpeak_backlog_mean)}",
             )
         )
-    # 7
+    # 7: expected at lead times 0 and 1 only (spec 13.14, D55); the CLI runs L = 0
     if trader is None or base is None:
         out.append(missing(7, "trader and order_up_to"))
     elif (
@@ -557,7 +565,7 @@ def _table(results: Sequence[StrategyResult]) -> str:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.tools.balance")
-    parser.add_argument("--seeds", type=int, default=200)
+    parser.add_argument("--seeds", type=int, default=DEFAULT_SEEDS)
     parser.add_argument("--players", type=int, default=4)
     parser.add_argument("--strategy", nargs="+", action="extend", default=None)
     parser.add_argument("--json", action="store_true")

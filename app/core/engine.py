@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -12,10 +12,10 @@ from app.core.calendar import order_windows, weekday_of
 from app.core.config_models import GameConfig
 from app.core.enums import IncotermTier, Phase, TradeSide, Weekday
 from app.core.futures import FuturesBook, fill_futures, make_contract
-from app.core.insurance import plan_rows, refund_value, tier_fee
+from app.core.insurance import plan_rows, refund_value, shipment_unit_cost, tier_fee
 from app.core.kernels import weekday_multipliers
 from app.core.limits import MAX_ORDER, MAX_PEER_PRICE, MAX_PLAYERS, MIN_PLAYERS_TO_START
-from app.core.lots import Cellar, Lot, quality_guide
+from app.core.lots import Cellar, Lot, guide_rows
 from app.core.money import round_cents, to_cents
 from app.core.peer_market import Bid, Offer, OfferLot, clear_peer_market
 from app.core.pipeline import Pipeline
@@ -35,6 +35,7 @@ from app.core.records import (
     PublicPlayerDay,
     Shipment,
     StaleDay,
+    decision_field_issues,
     msg_offer_units_bounds,
     msg_peer_price_bounds,
     msg_unaffordable,
@@ -43,8 +44,8 @@ from app.core.reputation import fill_ratio, update_reputation, waste_ratio
 from app.core.rng import stream
 from app.core.sampling import halfup
 from app.core.settlement import final_settlement
-from app.core.stats import build_stats
-from app.core.supply import AbstractSupplier, SupplierDay, allocate
+from app.core.stats import build_stats, cumulative_profits
+from app.core.supply import AbstractSupplier, SupplierDay, allocate, spot_range
 from app.core.transport import draw_failure, transport_losses
 
 _ALIAS_RE = re.compile(r"^P[1-9][0-9]*$")
@@ -65,6 +66,12 @@ _RECORD_FIELDS: tuple[str, ...] = tuple(DayRecord.__dataclass_fields__)
 
 def _alias_number(alias: str) -> int:
     return int(alias[1:])
+
+
+def offer_lots(lots: Iterable[Lot], max_quality: int) -> list[Lot]:
+    """The lots a sell offer puts up: each lot at or below its maximum quality
+    (spec 5.7). Resolution and the form's "now in your cellar" line both use it."""
+    return [lot for lot in lots if lot.quality() <= max_quality]
 
 
 @dataclass(frozen=True)
@@ -312,12 +319,17 @@ class PulkyEngine:
                 "base_price": c.supplier.base_price,
                 "lead_time_days": c.supplier.lead_time_days,
             },
-            "spot": {"open": win.spot_open, "arrives_day": win.spot_arrives_day},
+            "spot": {
+                "open": win.spot_open,
+                "arrives_day": win.spot_arrives_day,
+                "arrives_weekday": weekday_of(win.spot_arrives_day).value,
+            },
             "futures": {
                 "open": win.futures_open,
                 "price": c.supplier.base_price,
                 "horizon_days": c.futures.horizon_days,
                 "delivery_day": win.futures_delivery_day,
+                "delivery_weekday": weekday_of(win.futures_delivery_day).value,
                 "last_day_to_buy": win.last_day_to_buy,
                 "days_left_to_buy": win.days_left_to_buy,
             },
@@ -327,7 +339,9 @@ class PulkyEngine:
 
     # ----------------------------------------------------------------- submit
 
-    def outlay(self, alias: str, decision: Decision) -> float:
+    def outlay_parts(self, alias: str, decision: Decision) -> dict[str, float]:
+        """The outlay of spec 8.3 by part, unrounded: spot, futures, shipping
+        (transport and the tier's fee on the units that may ship) and conservation."""
         player = self._players[alias]
         c = self._config
         fee = tier_fee(decision.incoterm_tier, self._tier_terms)
@@ -336,13 +350,108 @@ class PulkyEngine:
             lot = player.cellar.get(lot_id)
             if lot is not None:
                 conserved_units += lot.qty
+        return {
+            "spot": self._supplier_day.spot_price * decision.order_spot,
+            "futures": c.supplier.base_price * decision.order_futures,
+            "shipping": (c.transport.unit_cost + fee) * decision.order_spot
+            + fee * player.book.due(self._day),
+            "conservation": c.stock.conservation_cost_per_unit * conserved_units,
+        }
+
+    def outlay(self, alias: str, decision: Decision) -> float:
+        parts = self.outlay_parts(alias, decision)
         return (
-            self._supplier_day.spot_price * decision.order_spot
-            + c.supplier.base_price * decision.order_futures
-            + (c.transport.unit_cost + fee) * decision.order_spot
-            + fee * player.book.due(self._day)
-            + c.stock.conservation_cost_per_unit * conserved_units
+            parts["spot"] + parts["futures"] + parts["shipping"] + parts["conservation"]
         )
+
+    def affordable(self, alias: str, outlay: float) -> bool:
+        """Spec 8.3: a zero outlay is always affordable."""
+        return outlay <= 0 or round_cents(outlay) <= self._players[alias].cash
+
+    def decision_preview(self, alias: str, draft: object) -> dict[str, Any]:
+        """What the decision form shows for a draft decision (spec 12.4), from the
+        functions submission and resolution use: the outlay against cash, the tier
+        cards for the draft's shipment, the units a sell offer would put up now,
+        and every field the server would refuse. Read-only: the draft is never
+        stored. Parts that need a field still in error are null."""
+        data = draft if isinstance(draft, dict) else {}
+        p = self._players[alias]
+        c = self._config
+        issues = decision_field_issues(data)
+        bad = {field for field, _ in issues}
+        win = self._windows()
+        spot = data.get("order_spot", 0) if win.spot_open else 0
+        futures = data.get("order_futures", 0) if win.futures_open else 0
+        due = p.book.due(self._day)
+        try:
+            tier = IncotermTier(data.get("incoterm_tier", IncotermTier.EXW.value))
+        except ValueError:
+            tier = IncotermTier.EXW
+        if tier != IncotermTier.EXW and not self._tier_terms[tier].enabled:
+            tier = IncotermTier.EXW
+        raw_lots = data.get("conserve_lots", [])
+        lot_ids = tuple(
+            str(i)
+            for i in (raw_lots if isinstance(raw_lots, list) else [])
+            if (lot := p.cellar.get(str(i))) is not None and not lot.conserved
+        )
+        orders_ok = "order_spot" not in bad and "order_futures" not in bad
+        outlay: dict[str, float] | None = None
+        affordable: bool | None = None
+        message: str | None = None
+        shipment: int | None = None
+        plans: list[dict[str, Any]] | None = None
+        if orders_ok:
+            decision = Decision(
+                self._day, int(spot), int(futures), tier, lot_ids, False, None, None
+            )
+            parts = self.outlay_parts(alias, decision)
+            total = sum(parts.values())
+            outlay = {k: round_cents(v) for k, v in parts.items()}
+            outlay["total"] = round_cents(total)
+            affordable = self.affordable(alias, total)
+            if not affordable:
+                message = msg_unaffordable(round_cents(total), p.cash)
+            shipment = int(spot) + due
+            plans = plan_rows(
+                self._tier_terms,
+                today_spot_price=self._supplier_day.spot_price,
+                base_price=c.supplier.base_price,
+                retail_price=c.demand.retail_price,
+                spot_units=int(spot),
+                futures_units=due,
+                lead_time_days=c.supplier.lead_time_days,
+            )
+            for row in plans:
+                row["fee_for_shipment"] = round_cents(row["fee_per_unit"] * shipment)
+        offer: dict[str, Any] | None = None
+        sell = data.get("peer_sell")
+        if (
+            c.peer_market.enabled
+            and isinstance(sell, dict)
+            and "peer_sell.max_quality" not in bad
+        ):
+            cap = sell.get("max_units") if "peer_sell.max_units" not in bad else None
+            lots = [
+                lot
+                for lot in offer_lots(p.cellar.lots, sell["max_quality"])
+                if lot.id not in lot_ids
+            ]
+            units = sum(lot.qty for lot in lots)
+            offer = {
+                "units": units if cap is None else min(units, cap),
+                "lot_ids": [lot.id for lot in lots],
+            }
+        return {
+            "day": self._day,
+            "outlay": outlay,
+            "affordable": affordable,
+            "unaffordable_message": message,
+            "shipment_units": shipment,
+            "tier_plans": plans,
+            "offer": offer,
+            "errors": [{"field": f, "message": m} for f, m in issues],
+        }
 
     def _check_peer_limits(self, decision: Decision) -> None:
         buy = decision.peer_buy
@@ -398,7 +507,7 @@ class PulkyEngine:
                 raise InvalidDecision(MSG_CONSERVE_INVALID)
             seen.add(lot_id)
         outlay = self.outlay(alias, decision)
-        if outlay > 0 and round_cents(outlay) > player.cash:
+        if not self.affordable(alias, outlay):
             raise InvalidDecision(msg_unaffordable(round_cents(outlay), player.cash))
         player.pending = decision
         player.last_decision = decision
@@ -497,8 +606,7 @@ class PulkyEngine:
             w.allocated = allocated[a]
             w.cost_spot = spot * w.allocated
             w.shipped = w.allocated + w.futures_filled
-            if w.shipped > 0:
-                w.unit_cost = (spot * w.allocated + base * w.futures_filled) / w.shipped
+            w.unit_cost = shipment_unit_cost(w.allocated, spot, w.futures_filled, base)
             w.cost_transport = c.transport.unit_cost * w.shipped
             w.cost_insurance = (
                 tier_fee(w.decision.incoterm_tier, self._tier_terms) * w.shipped
@@ -776,8 +884,9 @@ class PulkyEngine:
                     sell.max_units,
                     tuple(
                         OfferLot(lot.id, lot.qty, lot.quality(), lot.days_left())
-                        for lot in self._players[a].cellar.lots
-                        if lot.quality() <= sell.max_quality
+                        for lot in offer_lots(
+                            self._players[a].cellar.lots, sell.max_quality
+                        )
                     ),
                 )
         trades = clear_peer_market(
@@ -879,6 +988,15 @@ class PulkyEngine:
             order_futures=last.order_futures if win.futures_open else 0,
         ).to_payload()
 
+    def _spot_order_today(self, alias: str) -> int:
+        """The spot order the server holds for today: the submitted one, else the
+        form's starting decision (spec 6.3); 0 once the game is over."""
+        pending = self._players[alias].pending
+        if pending is not None:
+            return pending.order_spot
+        prefill = self._prefill(alias)
+        return int(prefill["order_spot"]) if prefill is not None else 0
+
     def _yesterday(self, alias: str) -> dict | None:
         records = self._players[alias].records
         if not records:
@@ -912,6 +1030,17 @@ class PulkyEngine:
             "revenue_peer": r.revenue_peer,
         }
 
+    def _cellar_view(self, alias: str) -> list[dict]:
+        """The cellar rows of spec 12.4, each with what conserving it would cost
+        today (spec 3.4): the price outlay charges, null once it is conserved."""
+        cost = self._config.stock.conservation_cost_per_unit
+        rows = self._players[alias].cellar.view(self._day)
+        for row in rows:
+            row["conservation_cost"] = (
+                None if row["conserved"] else round_cents(cost * row["qty"])
+            )
+        return rows
+
     def _in_transit(self, alias: str) -> list[dict]:
         lead = self._config.supplier.lead_time_days
         return [
@@ -942,10 +1071,10 @@ class PulkyEngine:
             "awaiting": self.awaiting(),
             "brief": self.brief(),
             "yesterday": self._yesterday(alias),
-            "cellar": p.cellar.view(self._day),
+            "cellar": self._cellar_view(alias),
             "stock_by_age": p.cellar.stock_by_age(),
             "quality_guide": (
-                quality_guide(self._day, c.stock.fresh_days, c.stock.max_days)
+                guide_rows(self._day, c.stock.fresh_days, c.stock.max_days)
                 if c.peer_market.enabled
                 else []
             ),
@@ -963,7 +1092,11 @@ class PulkyEngine:
             "tier_plans": plan_rows(
                 self._tier_terms,
                 today_spot_price=self._supplier_day.spot_price,
+                base_price=c.supplier.base_price,
                 retail_price=c.demand.retail_price,
+                spot_units=self._spot_order_today(alias),
+                futures_units=0 if finished else p.book.due(self._day),
+                lead_time_days=c.supplier.lead_time_days,
             ),
             "order_windows": (
                 None
@@ -1003,9 +1136,15 @@ class PulkyEngine:
         for a, p in self._players.items():
             fill, waste = self._fill_waste(a)
             last = p.records[-1] if p.records else None
+            # A game that ran its last day is only FINISHED because every
+            # decision of that day was in, so the host's tracker must read
+            # "submitted" for all of them rather than the "nobody is pending"
+            # False that `has_submitted` gives once the phase is over. An early
+            # end cancels pending decisions, so there it stays False.
+            ran_to_the_end = self._phase == Phase.FINISHED and not self._ended_early
             entry: dict[str, Any] = {
                 "display_name": self._names[a],
-                "has_submitted": self.has_submitted(a),
+                "has_submitted": self.has_submitted(a) or ran_to_the_end,
                 "stock_units": p.cellar.total(),
                 "expected_spoil_tonight": p.cellar.expected_spoil_tonight(),
                 "in_transit_units": sum(s.qty for s in p.pipeline.items()),
@@ -1023,6 +1162,7 @@ class PulkyEngine:
             }
             if full:
                 entry["own_history"] = [r.to_payload() for r in p.records]
+                entry["cumulative_profit_by_day"] = cumulative_profits(p.records)
             else:
                 entry["last_record"] = last.to_payload() if last else None
             players[a] = entry
@@ -1033,7 +1173,9 @@ class PulkyEngine:
             "phase": self._phase.value,
             "brief": self.brief(),
             "seed": self._seed,
-            "config": c.to_dict(),
+            # No config: the engine's is the full one, and the host must get the
+            # room's host config, hidden defaults null (spec 9.3, 12.5).
+            "spot_range": spot_range(c.supplier.base_price, c.supplier.spot_spread),
             "awaiting": self.awaiting(),
             "players": players,
             "leaderboard": self.standings()["leaderboard"],
@@ -1060,6 +1202,10 @@ class PulkyEngine:
             display_names=self._names,
             starting_reputation=self._config.reputation.starting,
             seed=self._seed,
+            initial_pipeline=(
+                self._config.supplier.lead_time_days
+                * self._config.supplier.initial_pipeline_qty
+            ),
         )
 
     def results(self) -> dict:
@@ -1071,6 +1217,8 @@ class PulkyEngine:
             "ended_early": self._ended_early,
             "leaderboard": stats["leaderboard"],
             "stats": {"players": stats["players"], "market": stats["market"]},
+            # The end reveals the full config, hidden defaults included (spec 9.3).
+            "config": self._config.to_dict(),
         }
 
     # ---------------------------------------------------------------- payload

@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.defaults import DEFAULT_CONFIG, PLAYER_CONFIG_KEYS
+from app.core.defaults import DEFAULT_CONFIG, HIDDEN_DEFAULT_KEYS, PLAYER_CONFIG_KEYS
 from app.core.enums import WEEKDAYS, IncotermTier, Weekday
 from app.core.insurance import (
     INSURED_TIERS,
@@ -134,6 +134,8 @@ class ValidationResult:
     config: "GameConfig | None"
     errors: list[FieldIssue]
     warnings: list[FieldIssue]
+    host_config: dict[str, Any] | None = None
+    """The host's config as validated, null kept at each hidden default (spec 9.3)."""
 
 
 @dataclass(frozen=True)
@@ -145,6 +147,7 @@ class FieldSpec:
     min_exclusive: bool
     nullable: bool
     players: str
+    hidden_default: bool = False
 
 
 SECRET_KEYS: frozenset[str] = frozenset(
@@ -175,7 +178,10 @@ def _spec(
         players = "secret"
     else:
         players = "not_shown"
-    return FieldSpec(path, type_, lo, hi, exclusive, nullable, players)
+    hidden = path in HIDDEN_DEFAULT_KEYS
+    return FieldSpec(
+        path, type_, lo, hi, exclusive, nullable or hidden, players, hidden
+    )
 
 
 _FEE_MAX = 10_000
@@ -245,6 +251,27 @@ def _set(tree: dict[str, Any], path: str, value: Any) -> None:
     node[parts[-1]] = value
 
 
+def host_default_config() -> dict[str, Any]:
+    """A new room's config: the defaults, with null at every hidden default."""
+    config = copy.deepcopy(DEFAULT_CONFIG)
+    for path in HIDDEN_DEFAULT_KEYS:
+        _set(config, path, None)
+    return config
+
+
+def hidden_keys(config: dict[str, Any]) -> frozenset[str]:
+    """The hidden-default paths a host config leaves at their default (null)."""
+    return frozenset(p for p in HIDDEN_DEFAULT_KEYS if _get(config, p) is None)
+
+
+def resolve_hidden_defaults(config: dict[str, Any]) -> dict[str, Any]:
+    """A copy of a host config with each null hidden default filled in."""
+    out = copy.deepcopy(config)
+    for path in hidden_keys(config):
+        _set(out, path, _get(DEFAULT_CONFIG, path))
+    return out
+
+
 class GameConfig(BaseModel):
     model_config = _FROZEN
     max_players: int
@@ -268,12 +295,20 @@ class GameConfig(BaseModel):
     def from_dict(cls, data: dict[str, Any]) -> "GameConfig":
         return cls.model_validate(data)
 
+    @classmethod
+    def from_host_config(cls, data: dict[str, Any]) -> "GameConfig":
+        """The config the engine runs on: a host config with its hidden defaults
+        filled in (spec 9.3)."""
+        return cls.from_dict(resolve_hidden_defaults(data))
+
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump(by_alias=True, mode="json")
 
     @classmethod
     def from_host_input(
-        cls, patch: dict[str, Any], current: "GameConfig | None" = None
+        cls,
+        patch: dict[str, Any],
+        current: "GameConfig | dict[str, Any] | None" = None,
     ) -> "GameConfig":
         result = validate_config(patch, current)
         if result.config is None:
@@ -418,9 +453,16 @@ def _cross_field(merged: dict[str, Any], failed: set[str]) -> list[FieldIssue]:
 
 
 def validate_config(
-    patch: dict[str, Any], current: GameConfig | None = None
+    patch: dict[str, Any], current: GameConfig | dict[str, Any] | None = None
 ) -> ValidationResult:
-    base = current.to_dict() if current is not None else copy.deepcopy(DEFAULT_CONFIG)
+    """Merge ``patch`` into ``current`` (a host config, or the host defaults) and
+    validate it. A null hidden default is valid and means the default (spec 9.3)."""
+    if current is None:
+        base = host_default_config()
+    elif isinstance(current, GameConfig):
+        base = current.to_dict()
+    else:
+        base = copy.deepcopy(current)
     merged = _merge(base, patch)
     errors = _unknown_keys(patch, DEFAULT_CONFIG, "")
     failed: set[str] = set()
@@ -433,13 +475,25 @@ def validate_config(
     if errors:
         return ValidationResult(None, errors, [])
     for spec in FIELD_SPECS:
-        if spec.type == "float":
-            _set(merged, spec.path, float(_get(merged, spec.path)))
-    config = GameConfig.from_dict(merged)
-    return ValidationResult(config, [], config_warnings(config))
+        value = _get(merged, spec.path)
+        if spec.type == "float" and value is not None:
+            _set(merged, spec.path, float(value))
+    config = GameConfig.from_host_config(merged)
+    warnings = config_warnings(config, hidden_keys(merged))
+    return ValidationResult(config, [], warnings, merged)
 
 
-def config_warnings(config: GameConfig) -> list[FieldIssue]:
+MSG_PIPELINE_WITHOUT_LEAD_TIME = (
+    "No effect with a lead time of 0: nothing is on its way at the start."
+)
+_RISK_KEYS = frozenset({"transport.failure_probability", "transport.loss_fraction"})
+
+
+def config_warnings(
+    config: GameConfig, hidden: frozenset[str] = frozenset()
+) -> list[FieldIssue]:
+    """Spec 9.2's warnings. ``hidden`` names the hidden defaults the host left
+    blank: a break-even ratio computed from one of them would reveal it."""
     warnings: list[FieldIssue] = []
     supplier, transport = config.supplier, config.transport
     floor = supplier.base_price * (1 + supplier.spot_spread) + transport.unit_cost
@@ -450,6 +504,12 @@ def config_warnings(config: GameConfig) -> list[FieldIssue]:
                 "On the dearest spot days a unit can lose money.",
             )
         )
+    if supplier.initial_pipeline_qty > 0 and supplier.lead_time_days == 0:
+        warnings.append(
+            FieldIssue("supplier.initial_pipeline_qty", MSG_PIPELINE_WITHOUT_LEAD_TIME)
+        )
+    if hidden & _RISK_KEYS:
+        return warnings
     terms = config.tier_terms()
     for tier in INSURED_TIERS:
         if not terms[tier].enabled:
@@ -484,8 +544,9 @@ def config_public(config: GameConfig) -> dict[str, Any]:
 
 
 def config_schema() -> dict[str, Any]:
+    """``GET /config/defaults``: public, so it carries null at each hidden default."""
     return {
-        "config": copy.deepcopy(DEFAULT_CONFIG),
+        "config": host_default_config(),
         "fields": {
             spec.path: {
                 "type": spec.type,
@@ -493,6 +554,7 @@ def config_schema() -> dict[str, Any]:
                 "max": spec.max,
                 "nullable": spec.nullable,
                 "players": spec.players,
+                "hidden_default": spec.hidden_default,
             }
             for spec in FIELD_SPECS
         },

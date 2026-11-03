@@ -570,12 +570,16 @@ def _expected_metrics(
     *,
     shift: bool = True,
     baseline_excludes_arrivals: bool = True,
-    exclude: bool = True,
+    skip_disrupted_arrivals: bool = False,
 ) -> dict[str, Any]:
     """Independent restatement of plan 12 section 3.4.
 
-    ``shift=False`` measures on the disrupted day d itself (the old rule);
-    ``exclude=False`` keeps d + L past the last day or itself disrupted.
+    A cut-arrival day is d + L for each disrupted day d with d + L <= the last day
+    (d itself at L = 0); the baseline is every other day of the same weekdays.
+    ``shift=False`` measures on the disrupted day d whatever the lead time;
+    ``skip_disrupted_arrivals=True`` is the old rule that left out a d + L that is
+    itself disrupted, and every disrupted day from the baseline: at L = 0 it leaves
+    nothing to measure.
     """
     lead = cfg.supplier.lead_time_days if shift else 0
     lo, hi = cfg.demand.weekday_peak.from_, cfg.demand.weekday_peak.to
@@ -592,22 +596,23 @@ def _expected_metrics(
         for d in disrupted:
             dis_days += 1
             trade_days += market[d].peer_units > 0
-        measured = [
+        measured = {
             d + lead
             for d in disrupted
-            if not exclude or (d + lead <= last and not market[d + lead].disrupted)
-        ]
-        weekdays = {market[t].weekday for t in measured if t in market}
+            if d + lead <= last
+            and not (skip_disrupted_arrivals and market[d + lead].disrupted)
+        }
+        weekdays = {market[t].weekday for t in measured}
         for alias in g.aliases:
             for r in g.records(alias):
                 if market[r.day].disrupted:
                     fills.append(r.fill)
                 if r.day in measured:
-                    sold.extend([r.sold] * measured.count(r.day))
+                    sold.append(r.sold)
                 if (
-                    not market[r.day].disrupted
+                    r.weekday in weekdays
                     and (r.day not in measured or not baseline_excludes_arrivals)
-                    and r.weekday in weekdays
+                    and not (skip_disrupted_arrivals and market[r.day].disrupted)
                 ):
                     normal.append(r.sold)
                 is_peak = weekday_multiplier(r.weekday, lo, hi) == 1.0
@@ -653,11 +658,12 @@ def test_disruption_sold_is_measured_on_the_arrival_day_not_the_cut_day() -> Non
     seeds = range(6)
     games = _games(cfg, "order_up_to", 4, seeds)
     arrival = _expected_metrics(cfg, games)
-    cut_day = _expected_metrics(cfg, games, shift=False, exclude=False)
-    unfiltered = _expected_metrics(cfg, games, exclude=False)
+    cut_day = _expected_metrics(cfg, games, shift=False)
+    old_rule = _expected_metrics(cfg, games, skip_disrupted_arrivals=True)
     a = statistics.fmean(arrival["sold"])
     assert a != pytest.approx(statistics.fmean(cut_day["sold"]), abs=1e-6)
-    assert a != pytest.approx(statistics.fmean(unfiltered["sold"]), abs=1e-6)
+    # a d + L that is itself disrupted still counts: its own cut lands later
+    assert a != pytest.approx(statistics.fmean(old_rule["sold"]), abs=1e-6)
     res = evaluate(cfg, STRATEGIES["order_up_to"], 4, seeds)
     assert res.disruption_sold_mean == pytest.approx(a)
     assert res.normal_sold_mean == pytest.approx(statistics.fmean(arrival["normal"]))
@@ -668,6 +674,48 @@ def test_disruption_sold_is_measured_on_the_arrival_day_not_the_cut_day() -> Non
     )
     # the fill mean stays on the disrupted days d themselves
     assert res.disruption_fill_mean == pytest.approx(statistics.fmean(arrival["fills"]))
+
+
+def test_target_six_is_measured_at_lead_time_zero() -> None:
+    # Failure mode: at the default lead time of 0, d + L is the disruption day
+    # itself. The old rule dropped every such day, so the target had no input.
+    cfg = make_config(**{"supplier.disruption_probability": 0.4})
+    assert cfg.supplier.lead_time_days == 0
+    seeds = range(4)
+    games = _games(cfg, "order_up_to", 4, seeds)
+    assert not _expected_metrics(cfg, games, skip_disrupted_arrivals=True)["sold"]
+    exp = _expected_metrics(cfg, games)
+    res = evaluate(cfg, STRATEGIES["order_up_to"], 4, seeds)
+    assert res.disruption_sold_mean is not None
+    assert res.disruption_sold_mean == pytest.approx(statistics.fmean(exp["sold"]))
+    assert res.normal_sold_mean == pytest.approx(statistics.fmean(exp["normal"]))
+    # at L = 0 the cut-arrival days are the disrupted days, the baseline the rest
+    on_cut, off_cut = [], []
+    for g in games:
+        market = {m.day: m for m in g.market_history()}
+        weekdays = {m.weekday for m in market.values() if m.disrupted}
+        for alias in g.aliases:
+            for r in g.records(alias):
+                if market[r.day].disrupted:
+                    on_cut.append(r.sold)
+                elif r.weekday in weekdays:
+                    off_cut.append(r.sold)
+    assert res.disruption_sold_mean == pytest.approx(statistics.fmean(on_cut))
+    assert res.normal_sold_mean == pytest.approx(statistics.fmean(off_cut))
+    # a cut that lands the same day shows in that day's sales
+    assert res.disruption_sold_mean < res.normal_sold_mean
+
+
+def test_harness_defaults_seeds_and_hedger_tolerance() -> None:
+    assert balance.DEFAULT_SEEDS == 1000
+    assert balance.HEDGER_SD_TOLERANCE == pytest.approx(1.01)
+
+
+def test_target_three_sd_tolerance_is_one_percent() -> None:
+    # order_up_to's profit sd is 100 in passing_results()
+    assert run(_mutate(("hedger", False), profit_sd=100.0))[3].passed is True
+    assert run(_mutate(("hedger", False), profit_sd=100.99))[3].passed is True
+    assert run(_mutate(("hedger", False), profit_sd=101.0))[3].passed is False
 
 
 # ---------------------------------------------------------------- check_targets
@@ -746,9 +794,9 @@ def _mutate(
         # 2: median waste in [0.05, 0.20]
         (("order_up_to", False), {"waste_rate_median": 0.04}, 2),
         (("order_up_to", False), {"waste_rate_median": 0.21}, 2),
-        # 3: hedger within 5%, lower sd, higher disruption fill
+        # 3: hedger within 5%, lower sd (1% tolerance), higher disruption fill
         (("hedger", False), {"profit_mean": 940.0}, 3),
-        (("hedger", False), {"profit_sd": 100.0}, 3),
+        (("hedger", False), {"profit_sd": 101.0}, 3),
         (("hedger", False), {"disruption_fill_mean": 0.5}, 3),
         # 4 (not shared)
         (("insured", False), {"profit_mean": 940.0}, 4),

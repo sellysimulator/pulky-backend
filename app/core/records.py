@@ -247,11 +247,52 @@ def _readable(data: object) -> bool:
     )
 
 
-def _price_ok(x: float) -> bool:
-    if not math.isfinite(x):
+def _price_ok(x: object) -> bool:
+    if isinstance(x, bool) or not isinstance(x, int | float) or not math.isfinite(x):
         return False
     cents = x * 100
     return abs(cents - round(cents)) < 1e-6 and 0.01 <= x <= MAX_PEER_PRICE
+
+
+def _whole_in(x: object, low: int, high: int) -> bool:
+    return isinstance(x, int) and not isinstance(x, bool) and low <= x <= high
+
+
+def _order_ok(x: object) -> bool:
+    return _whole_in(x, 0, MAX_ORDER)
+
+
+def _quality_ok(x: object) -> bool:
+    return _whole_in(x, 0, 100)
+
+
+def _offer_units_ok(x: object) -> bool:
+    return _whole_in(x, 1, MAX_ORDER)
+
+
+def decision_field_issues(data: object) -> list[tuple[str, str]]:
+    """Every field of a draft decision that ``parse_decision`` would refuse, with its
+    spec 4.3 message: ``(field, message)``, the field as a dot path (``order_spot``,
+    ``peer_sell.max_units``). A draft field may be null or not yet a whole number
+    while the player types; the form shows these messages (spec 12.4)."""
+    if not isinstance(data, dict):
+        return []
+    issues: list[tuple[str, str]] = []
+    for key in ("order_spot", "order_futures"):
+        if key in data and not _order_ok(data[key]):
+            issues.append((key, msg_order_bounds()))
+    checks = (
+        ("peer_buy", "max_price", _price_ok, msg_peer_price_bounds()),
+        ("peer_buy", "min_quality", _quality_ok, MSG_QUALITY_BOUNDS),
+        ("peer_sell", "price", _price_ok, msg_peer_price_bounds()),
+        ("peer_sell", "max_quality", _quality_ok, MSG_QUALITY_BOUNDS),
+        ("peer_sell", "max_units", _offer_units_ok, msg_offer_units_bounds()),
+    )
+    for side, key, ok, message in checks:
+        limits = data.get(side)
+        if isinstance(limits, dict) and not ok(limits.get(key)):
+            issues.append((f"{side}.{key}", message))
+    return issues
 
 
 def parse_decision(data: object) -> Decision:
@@ -264,7 +305,7 @@ def parse_decision(data: object) -> Decision:
     except ValueError:
         raise InvalidDecision(MSG_TIER_UNAVAILABLE) from None
     for key in ("order_spot", "order_futures"):
-        if not 0 <= data[key] <= MAX_ORDER:
+        if not _order_ok(data[key]):
             raise InvalidDecision(msg_order_bounds())
     lots: list[str] = data["conserve_lots"]
     if len(lots) > MAX_CONSERVE_LOTS:
@@ -277,9 +318,9 @@ def parse_decision(data: object) -> Decision:
         raise InvalidDecision(msg_peer_price_bounds())
     qualities = [p["min_quality"] for p in (buy,) if p]
     qualities += [p["max_quality"] for p in (sell,) if p]
-    if not all(0 <= q <= 100 for q in qualities):
+    if not all(_quality_ok(q) for q in qualities):
         raise InvalidDecision(MSG_QUALITY_BOUNDS)
-    if sell is not None and not 1 <= sell["max_units"] <= MAX_ORDER:
+    if sell is not None and not _offer_units_ok(sell["max_units"]):
         raise InvalidDecision(msg_offer_units_bounds())
     return Decision(
         data["day"],

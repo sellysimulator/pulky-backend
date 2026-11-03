@@ -14,6 +14,11 @@ def waste_ratio(spoiled: int, sold: int) -> float:
     return spoiled / available
 
 
+def day_score(fill: float, waste: float, waste_weight: float) -> float:
+    """One day's score: serving what is owed against spoiling (spec 7.6)."""
+    return (1 - waste_weight) * fill + waste_weight * (1 - waste)
+
+
 def update_reputation(
     reputation: float,
     fill: float,
@@ -21,5 +26,5 @@ def update_reputation(
     smoothing: float,
     waste_weight: float,
 ) -> float:
-    day = (1 - waste_weight) * fill + waste_weight * (1 - waste)
+    day = day_score(fill, waste, waste_weight)
     return (1 - smoothing) * reputation + smoothing * day

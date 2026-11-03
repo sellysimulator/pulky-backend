@@ -10,7 +10,14 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core.config_models import MSG_CONFIG_LOCKED, GameConfig, config_public
+from app.core.config_models import (
+    MSG_CONFIG_LOCKED,
+    GameConfig,
+    config_public,
+    host_default_config,
+    resolve_hidden_defaults,
+    validate_config,
+)
 from app.core.defaults import DEFAULT_CONFIG
 from app.services.state_service import (
     ROOM_CODE_ALPHABET,
@@ -88,7 +95,10 @@ def test_create_room_response(client: TestClient) -> None:
     assert body["state"] == "lobby"
     assert re.fullmatch(f"[{ROOM_CODE_ALPHABET}]{{6}}", body["room_code"])
     assert isinstance(body["host_secret"], str) and len(body["host_secret"]) >= 16
-    assert body["config"] == GameConfig.default().to_dict() == DEFAULT_CONFIG
+    # The host's config: null at each hidden default (spec 9.3).
+    assert body["config"] == host_default_config()
+    assert body["config"]["transport"]["failure_probability"] is None
+    assert resolve_hidden_defaults(body["config"]) == DEFAULT_CONFIG
 
 
 def test_create_room_stores_the_room(client: TestClient) -> None:
@@ -97,7 +107,7 @@ def test_create_room_stores_the_room(client: TestClient) -> None:
     assert room["host_secret"] == body["host_secret"]
     assert room["host_display_name"] == "Ms. Ruiz"
     assert room["state"] == "lobby"
-    assert room["config"] == DEFAULT_CONFIG
+    assert room["config"] == host_default_config()
 
 
 @pytest.mark.parametrize(
@@ -256,7 +266,7 @@ def test_config_routes_403_for_a_wrong_or_missing_secret(client: TestClient) -> 
         for response in (get, put):
             assert response.status_code == 403
             assert response.json() == {"detail": FORBIDDEN}
-    assert load(code)["config"] == DEFAULT_CONFIG
+    assert load(code)["config"] == host_default_config()
 
 
 def test_missing_room_is_404_even_without_a_secret(client: TestClient) -> None:
@@ -278,7 +288,7 @@ def test_empty_stored_secret_rejects_missing_and_empty_headers(
         assert get.status_code == 403
         assert put.status_code == 403
         assert put.json() == {"detail": FORBIDDEN}
-    assert load(code)["config"] == DEFAULT_CONFIG
+    assert load(code)["config"] == host_default_config()
     assert load(code)["state"] == "lobby"
 
 
@@ -292,7 +302,7 @@ def test_get_config_returns_the_full_config(client: TestClient) -> None:
         headers=secret_headers(room["host_secret"]),
     )
     assert response.status_code == 200
-    assert response.json() == {"config": DEFAULT_CONFIG}
+    assert response.json() == {"config": host_default_config()}
     assert "random_seed" in response.json()["config"]
 
 
@@ -323,7 +333,7 @@ def test_put_config_stores_the_merged_config(client: TestClient) -> None:
     patch = {"demand": {"retail_price": 35}, "duration_days": 10}
     response = put_config(client, room, patch)
     assert response.status_code == 200
-    expected = GameConfig.from_host_input(patch).to_dict()
+    expected = validate_config(patch).host_config
     assert response.json() == {"config": expected}
     stored = load(room["room_code"])
     assert stored["config"] == expected
@@ -356,8 +366,9 @@ def test_put_config_sends_exactly_three_emits_in_order(
     response = put_config(client, room, patch)
     assert response.status_code == 200
 
-    full = GameConfig.from_host_input(patch).to_dict()
-    public = config_public(GameConfig.from_dict(full))
+    full = validate_config(patch).host_config
+    assert full is not None
+    public = config_public(GameConfig.from_host_config(full))
     records = fake_socket_manager.records
     assert [(r[0], r[1], r[3]) for r in records] == [
         (HOST_SID, "config_updated", None),
@@ -446,7 +457,7 @@ def test_put_config_on_a_locked_room_answers_409(
     assert response.json() == {"detail": MSG_CONFIG_LOCKED}
     assert MSG_CONFIG_LOCKED == "The settings are locked once the game starts."
     assert load(code) == before
-    assert load(code)["config"] == DEFAULT_CONFIG
+    assert load(code)["config"] == host_default_config()
     assert fake_socket_manager.records == []
 
 

@@ -22,8 +22,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.config_models import GameConfig
-from app.core.defaults import DEFAULT_CONFIG
+from app.core.config_models import GameConfig, host_default_config
+from app.core.defaults import DEFAULT_CONFIG, HIDDEN_DEFAULT_KEYS
 from app.core.engine import PulkyEngine
 from app.core.enums import IncotermTier
 from app.core.records import Decision, PeerBuy, PeerSell
@@ -75,6 +75,7 @@ RESULTS_KEYS = {
     "finished_at",
     "leaderboard",
     "stats",
+    "config",
 }
 NOT_FOUND = {"detail": "Results not found."}
 NEED_SIGN_IN = {"detail": "Sign in to continue."}
@@ -374,6 +375,7 @@ def check_parity(body: dict[str, Any], engine: PulkyEngine) -> None:
     assert body["stats"] == live["stats"]
     assert body["days_played"] == live["days_played"]
     assert body["ended_early"] == live["ended_early"]
+    assert body["config"] == live["config"]
     assert "seq" not in body
     market = body["stats"]["market"]
     assert market["peer_units_total"] > 0  # not a vacuous comparison
@@ -391,6 +393,31 @@ def test_ac1_the_results_route_equals_the_live_results(
     by_id = api.get(f"/api/v1/games/id/{gid}/results")
     assert by_id.status_code == 200
     check_parity(by_id.json(), engine)
+
+
+def test_a_game_with_hidden_defaults_is_stored_and_revealed_with_the_full_config(
+    api: TestClient,
+    factory: Callable[[], Session],
+    db_session: Session,
+) -> None:
+    # Spec 9.3: the room keeps the host's config (null at each hidden default); the
+    # engine ran on the defaults, and the stored game and its results carry them.
+    engine = PulkyEngine.start(GameConfig.default(), seats(2), 21)
+    for alias in engine.aliases:
+        engine.submit(alias, Decision.zero(1))
+    engine.resolve_day()
+    engine.end_early()
+    room = make_room(engine)
+    room["config"] = host_default_config()
+    gid = persist(room, factory)
+    body = api.get(f"/api/v1/games/id/{gid}/results").json()
+    assert body["config"] == DEFAULT_CONFIG
+    for path in HIDDEN_DEFAULT_KEYS:
+        section, key = path.split(".")
+        assert body["config"][section][key] == DEFAULT_CONFIG[section][key]
+    row = db_session.execute(text("SELECT config FROM game_configs")).one()
+    stored = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+    assert stored == DEFAULT_CONFIG
 
 
 def test_results_metadata_and_shape(

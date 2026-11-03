@@ -129,8 +129,8 @@ EXPECTED_SPECS: list[tuple[str, str, Any, Any, bool, bool, str]] = [
     ("supplier.base_price", "float", 0, 10000, True, False, "not_shown"),
     ("supplier.spot_spread", "float", 0, 0.9, False, False, "not_shown"),
     ("supplier.capacity_mean_per_player", "float", 0, 9999, False, False, "not_shown"),
-    ("supplier.capacity_sd_per_player", "float", 0, 9999, False, False, "secret"),
-    ("supplier.disruption_probability", "float", 0, 1, False, False, "secret"),
+    ("supplier.capacity_sd_per_player", "float", 0, 9999, False, True, "secret"),
+    ("supplier.disruption_probability", "float", 0, 1, False, True, "secret"),
     ("supplier.disruption_factor", "float", 0, 1, False, False, "not_shown"),
     ("supplier.lead_time_days", "int", 0, MAX_LEAD_TIME, False, False, "not_shown"),
     ("supplier.initial_pipeline_qty", "int", 0, 9999, False, False, "not_shown"),
@@ -155,8 +155,8 @@ EXPECTED_SPECS: list[tuple[str, str, Any, Any, bool, bool, str]] = [
     ("peer_market.enabled", "bool", None, None, False, False, "shown"),
     ("transport.unit_cost", "float", 0, 10000, False, False, "shown"),
     ("transport.shared", "bool", None, None, False, False, "not_shown"),
-    ("transport.failure_probability", "float", 0, 1, False, False, "secret"),
-    ("transport.loss_fraction", "float", 0, 1, False, False, "secret"),
+    ("transport.failure_probability", "float", 0, 1, False, True, "secret"),
+    ("transport.loss_fraction", "float", 0, 1, False, True, "secret"),
     ("insurance.tiers.cip.enabled", "bool", None, None, False, False, "not_shown"),
     ("insurance.tiers.cip.fee", "float", 0, 10000, False, False, "not_shown"),
     ("insurance.tiers.dap.enabled", "bool", None, None, False, False, "not_shown"),
@@ -185,6 +185,13 @@ SECRETS = [
     "transport.loss_fraction",
     "insurance.target_margin",
     "insurance.reference_shipment",
+]
+# Spec 9.3: the risk odds, whose defaults no host sees before the game ends.
+HIDDEN = [
+    "supplier.capacity_sd_per_player",
+    "supplier.disruption_probability",
+    "transport.failure_probability",
+    "transport.loss_fraction",
 ]
 
 
@@ -603,7 +610,13 @@ def test_worked_example_two_errors_in_order() -> None:
 
 
 def test_worked_example_shared_transport_warnings() -> None:
-    result = validate_config({"transport": {"shared": True}})
+    # Spec 9.2: a ratio computed from a hidden default would reveal it, so the host
+    # gets the far-from-break-even warning only once both risks are typed in.
+    hidden = validate_config({"transport": {"shared": True}})
+    assert hidden.errors == [] and hidden.warnings == []
+    assert hidden.config is not None and hidden.config.transport.shared is True
+    typed = {"failure_probability": 0.14, "loss_fraction": 0.3}
+    result = validate_config({"transport": {"shared": True, **typed}})
     assert result.errors == []
     assert issue_pairs(result.warnings) == [
         ("insurance.tiers.cip.fee", "Far from break-even (ratio 6.55)."),
@@ -771,7 +784,7 @@ def test_weekday_field_accepts_only_the_seven_lowercase_strings(path: str) -> No
         assert (err.field, err.message) == (path, msg)
 
 
-def test_random_seed_is_the_only_nullable_field() -> None:
+def test_only_the_seed_and_the_hidden_defaults_are_nullable() -> None:
     cfg = GameConfig.from_host_input({"random_seed": None})
     assert cfg.random_seed is None
     assert GameConfig.from_host_input({"random_seed": 0}).random_seed == 0
@@ -782,11 +795,18 @@ def test_random_seed_is_the_only_nullable_field() -> None:
     )
     for row in EXPECTED_SPECS:
         path = row[0]
-        if path == "random_seed":
+        if path == "random_seed" or path in HIDDEN:
             continue
         err = raised(nest(path, None))
         assert err.field == path
         assert isinstance(err.message, str) and err.message
+    for path in HIDDEN:
+        # null is the hidden default, filled in from the defaults (spec 9.3)
+        result = validate_config(nest(path, None))
+        assert result.errors == []
+        assert result.config == GameConfig.default()
+        assert result.host_config is not None
+        assert get_path(result.host_config, path) is None
 
 
 def test_random_seed_bounds_messages() -> None:
@@ -1475,8 +1495,13 @@ def test_config_schema_has_a_field_for_every_leaf_and_no_other() -> None:
     assert set(schema) == {"config", "fields", "limits"}
     assert set(schema["fields"]) == set(leaves(DEFAULT_CONFIG))
     assert list(schema["fields"]) == EXPECTED_PATHS
-    assert schema["config"] == DEFAULT_CONFIG
-    assert ordered(schema["config"]) == ordered(SPEC_DEFAULTS)
+    # Public, so the hidden defaults are null and everything else is the default.
+    hidden_out = copy.deepcopy(SPEC_DEFAULTS)
+    for path in HIDDEN:
+        hidden_out = deep_merge(hidden_out, nest(path, None))
+    assert ordered(schema["config"]) == ordered(hidden_out)
+    for path in HIDDEN:
+        assert get_path(schema["config"], path) is None
     assert schema["limits"] == LIMITS
 
 
@@ -1484,7 +1509,15 @@ def test_config_schema_field_entries() -> None:
     for row in EXPECTED_SPECS:
         path, type_, lo, hi, _excl, nullable, players = row
         entry = config_schema()["fields"][path]
-        assert set(entry) == {"type", "min", "max", "nullable", "players"}
+        assert set(entry) == {
+            "type",
+            "min",
+            "max",
+            "nullable",
+            "players",
+            "hidden_default",
+        }
+        assert entry["hidden_default"] is (path in HIDDEN)
         assert entry["type"] == type_
         assert entry["min"] == lo
         assert entry["max"] == hi

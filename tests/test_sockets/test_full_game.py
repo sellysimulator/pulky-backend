@@ -153,7 +153,13 @@ async def test_no_player_facing_emit_carries_a_secret_config_key_or_value(
     world: World, persist: PersistSpy
 ) -> None:
     game = await play_whole_game(world)
-    facing = player_facing(world, game.code, game.host_sid)
+    everything = player_facing(world, game.code, game.host_sid)
+    # game_finished is the one exception: the end reveals the config (spec 9.3)
+    facing = [(e, p) for e, p in everything if e != "game_finished"]
+    finished = [p for e, p in everything if e == "game_finished"]
+    assert finished and all(
+        contains_key(p["config"], k) for p in finished for k in SECRET_KEY_NAMES
+    )
     assert len(facing) > 50
     for event, payload in facing:
         for key in SECRET_KEY_NAMES:

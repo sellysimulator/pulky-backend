@@ -215,7 +215,8 @@ def _write_game(
         {
             "game_id": game_id,
             "config_schema_version": CONFIG_SCHEMA_VERSION,
-            "config": room["config"],
+            # The full config the game ran with, hidden defaults filled in (D11).
+            "config": engine.config.to_dict(),
         },
     )
 
@@ -282,7 +283,7 @@ def persist_finished_game(
     db: Session | None = None
     try:
         engine = PulkyEngine.from_payload(
-            room["engine"], GameConfig.from_dict(room["config"])
+            room["engine"], GameConfig.from_host_config(room["config"])
         )
         db = session_factory() if session_factory is not None else _default_session()
 
