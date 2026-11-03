@@ -183,6 +183,50 @@ def test_order_bounds() -> None:
     assert rejected(order_spot=-5) == msg_order_bounds()
 
 
+# Every quantity a player decides, set negative; a negative order would buy or ship
+# a negative amount (the user's rule: no negative quantity in any game).
+NEGATIVE_QUANTITIES = [
+    ("order_spot", {"order_spot": -1}, msg_order_bounds()),
+    ("order_futures", {"order_futures": -1}, msg_order_bounds()),
+    (
+        "peer_buy.max_price",
+        {"peer_buy": {"max_price": -16, "min_quality": 90}},
+        msg_peer_price_bounds(),
+    ),
+    (
+        "peer_buy.min_quality",
+        {"peer_buy": {"max_price": 16, "min_quality": -5}},
+        MSG_QUALITY_BOUNDS,
+    ),
+    (
+        "peer_sell.price",
+        {"peer_sell": {"price": -15, "max_quality": 60, "max_units": 10}},
+        msg_peer_price_bounds(),
+    ),
+    (
+        "peer_sell.max_quality",
+        {"peer_sell": {"price": 15, "max_quality": -5, "max_units": 10}},
+        MSG_QUALITY_BOUNDS,
+    ),
+    (
+        "peer_sell.max_units",
+        {"peer_sell": {"price": 15, "max_quality": 60, "max_units": -10}},
+        msg_offer_units_bounds(),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("field", "over", "message"),
+    NEGATIVE_QUANTITIES,
+    ids=[n[0] for n in NEGATIVE_QUANTITIES],
+)
+def test_no_player_quantity_may_be_negative(
+    field: str, over: dict, message: str
+) -> None:
+    assert rejected(**over) == message, field
+
+
 def test_conserve_checks() -> None:
     assert rejected(conserve_lots=["L3", "L3"]) == MSG_CONSERVE_INVALID
     assert rejected(conserve_lots=[f"L{i}" for i in range(31)]) == (

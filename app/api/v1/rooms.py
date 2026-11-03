@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse
 
-from app.core.config_models import ConfigError, GameConfig
+from app.core.config_models import ConfigError, host_default_config
 from app.schemas.room import ConfigPatchRequest, CreateRoomRequest
 from app.services import room_service, state_service
 
@@ -30,7 +30,8 @@ async def _authorised_room(code: str, secret: str | None) -> dict:
 async def create_room(body: CreateRoomRequest | None = None) -> dict[str, Any]:
     raw_name = body.host_display_name if body is not None else None
     name = room_service.sanitise_display_name(raw_name, "Host")
-    config = GameConfig.default().to_dict()
+    # The host's config: null at each hidden default (spec 9.3).
+    config = host_default_config()
     room = await state_service.get_state_service().create_room(config, name)
     logger.info("room %s created", room["room_code"])
     return {

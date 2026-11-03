@@ -16,6 +16,7 @@ class ResultsResponse(BaseModel):
     finished_at: str
     leaderboard: list[dict[str, Any]]
     stats: dict[str, Any]
+    config: dict[str, Any]
 
 
 class MyResultsResponse(ResultsResponse):

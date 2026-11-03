@@ -160,7 +160,6 @@ HOST_BASE = {
     "phase",
     "brief",
     "seed",
-    "config",
     "awaiting",
     "players",
     "leaderboard",
@@ -305,7 +304,11 @@ def test_insurance_plans_come_from_the_tier_terms_and_todays_spot_price():
     expected = plan_rows(
         config.tier_terms(),
         today_spot_price=e.brief()["supplier"]["spot_price"],
+        base_price=12.0,
         retail_price=30.0,
+        spot_units=0,
+        futures_units=0,
+        lead_time_days=config.supplier.lead_time_days,
     )
     assert e.player_view("P1")["tier_plans"] == expected
     assert [row["enabled"] for row in expected].count(False) >= 1
@@ -559,7 +562,9 @@ def test_host_view_day_one_keys_and_values():
     assert set(v) == HOST_BASE | {"public_history", "market_history"}
     assert (v["day"], v["duration_days"], v["weekday"]) == (1, 14, "mon")
     assert v["phase"] == "deciding" and v["seed"] == 11
-    assert v["config"] == config.to_dict()
+    # The room adds the host's config (spec 12.5); the engine's full one never
+    # reaches the host before the end.
+    assert "config" not in v
     assert v["brief"] == e.brief() and v["awaiting"] == ["P1", "P2"]
     assert v["public_history"] == [] and v["market_history"] == []
     assert v["leaderboard"] == e.standings()["leaderboard"]
@@ -721,10 +726,15 @@ def test_secret_config_keys_and_values_never_reach_a_player():
         assert "config" not in view
         for wanted in forbidden_values:
             assert not has_value(view, wanted, tol=0.0051), wanted
-    # control: the host view carries all of it
+    # The engine's host view carries no config at all (the room adds the host's
+    # config, spec 12.5), only the seed; the end reveals the full config.
     host = e.host_view()
-    assert has_key(host, SECRET_LEAVES - {"random_seed"})
-    assert has_value(host, 0.137) and has_value(host, seed)
+    assert not has_key(host, SECRET_LEAVES)
+    assert has_value(host, seed)
+    while e.phase != Phase.FINISHED:
+        play(e)
+    assert e.results()["config"] == config.to_dict()
+    assert has_value(e.results(), 0.137)
 
 
 def test_cellar_entries_never_carry_shelf_life_fields():
@@ -767,7 +777,8 @@ def test_results_are_available_only_once_the_game_is_finished():
         play(e)
     assert e.phase == Phase.FINISHED
     res = e.results()
-    assert set(res) == {"days_played", "ended_early", "leaderboard", "stats"}
+    assert set(res) == {"days_played", "ended_early", "leaderboard", "stats", "config"}
+    assert res["config"] == e.config.to_dict()
     assert res["days_played"] == 7 and res["ended_early"] is False
     standings = e.standings()
     assert res["leaderboard"] == standings["leaderboard"]

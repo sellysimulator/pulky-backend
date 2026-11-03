@@ -12,7 +12,7 @@ from app.core.calendar import order_windows, weekday_of
 from app.core.config_models import GameConfig
 from app.core.enums import IncotermTier, Phase, TradeSide, Weekday
 from app.core.futures import FuturesBook, fill_futures, make_contract
-from app.core.insurance import plan_rows, refund_value, tier_fee
+from app.core.insurance import plan_rows, refund_value, shipment_unit_cost, tier_fee
 from app.core.kernels import weekday_multipliers
 from app.core.limits import MAX_ORDER, MAX_PEER_PRICE, MAX_PLAYERS, MIN_PLAYERS_TO_START
 from app.core.lots import Cellar, Lot, quality_guide
@@ -497,8 +497,7 @@ class PulkyEngine:
             w.allocated = allocated[a]
             w.cost_spot = spot * w.allocated
             w.shipped = w.allocated + w.futures_filled
-            if w.shipped > 0:
-                w.unit_cost = (spot * w.allocated + base * w.futures_filled) / w.shipped
+            w.unit_cost = shipment_unit_cost(w.allocated, spot, w.futures_filled, base)
             w.cost_transport = c.transport.unit_cost * w.shipped
             w.cost_insurance = (
                 tier_fee(w.decision.incoterm_tier, self._tier_terms) * w.shipped
@@ -879,6 +878,15 @@ class PulkyEngine:
             order_futures=last.order_futures if win.futures_open else 0,
         ).to_payload()
 
+    def _spot_order_today(self, alias: str) -> int:
+        """The spot order the server holds for today: the submitted one, else the
+        form's starting decision (spec 6.3); 0 once the game is over."""
+        pending = self._players[alias].pending
+        if pending is not None:
+            return pending.order_spot
+        prefill = self._prefill(alias)
+        return int(prefill["order_spot"]) if prefill is not None else 0
+
     def _yesterday(self, alias: str) -> dict | None:
         records = self._players[alias].records
         if not records:
@@ -963,7 +971,11 @@ class PulkyEngine:
             "tier_plans": plan_rows(
                 self._tier_terms,
                 today_spot_price=self._supplier_day.spot_price,
+                base_price=c.supplier.base_price,
                 retail_price=c.demand.retail_price,
+                spot_units=self._spot_order_today(alias),
+                futures_units=0 if finished else p.book.due(self._day),
+                lead_time_days=c.supplier.lead_time_days,
             ),
             "order_windows": (
                 None
@@ -1039,7 +1051,8 @@ class PulkyEngine:
             "phase": self._phase.value,
             "brief": self.brief(),
             "seed": self._seed,
-            "config": c.to_dict(),
+            # No config: the engine's is the full one, and the host must get the
+            # room's host config, hidden defaults null (spec 9.3, 12.5).
             "awaiting": self.awaiting(),
             "players": players,
             "leaderboard": self.standings()["leaderboard"],
@@ -1081,6 +1094,8 @@ class PulkyEngine:
             "ended_early": self._ended_early,
             "leaderboard": stats["leaderboard"],
             "stats": {"players": stats["players"], "market": stats["market"]},
+            # The end reveals the full config, hidden defaults included (spec 9.3).
+            "config": self._config.to_dict(),
         }
 
     # ---------------------------------------------------------------- payload

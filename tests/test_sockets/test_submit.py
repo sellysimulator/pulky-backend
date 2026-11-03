@@ -441,6 +441,24 @@ async def test_a_day_from_the_future_is_stale_too(world: World) -> None:
 
 # ------------------------------------------------ INVALID_DECISION (AC 1, 13)
 @aio
+async def test_a_negative_quantity_is_refused_and_changes_nothing(world: World) -> None:
+    game = await world.running_game()
+    for over in (
+        {"order_spot": -1},
+        {"order_futures": -3},
+        {"peer_buy": {"max_price": 16, "min_quality": -10}},
+        {"peer_sell": {"price": 15.5, "max_quality": 50, "max_units": -4}},
+    ):
+        await refused(
+            world,
+            "p1",
+            dec(game.code, 1, **over),
+            "INVALID_DECISION",
+            room_code=game.code,
+        )
+
+
+@aio
 async def test_the_peer_market_off_refuses_buy_limits_and_sell_offers(
     world: World,
 ) -> None:

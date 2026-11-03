@@ -65,3 +65,13 @@ PLAYER_CONFIG_KEYS: tuple[str, ...] = (
     "peer_market.enabled",
     "transport.unit_cost",
 )
+
+HIDDEN_DEFAULT_KEYS: tuple[str, ...] = (
+    "supplier.capacity_sd_per_player",
+    "supplier.disruption_probability",
+    "transport.failure_probability",
+    "transport.loss_fraction",
+)
+"""The risk odds (spec §9.3). Anyone can open a host screen, so no host sees these
+defaults before the game ends: a host config holds null for each one left at its
+default, and the server fills the value in from DEFAULT_CONFIG."""

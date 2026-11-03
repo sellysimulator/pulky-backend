@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core import config_models
-from app.core.config_models import GameConfig
 from app.core.enums import RoomState
 from app.core.limits import MAX_DISPLAY_NAME, MIN_PLAYERS_TO_START
 from app.services.state_service import ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH
@@ -169,8 +168,13 @@ def apply_config_update(
     """Merge and validate ``patch``; mutates ``room`` only on success."""
     if config_locked(room):
         raise ConfigLocked()
-    config = GameConfig.from_host_input(patch, GameConfig.from_dict(room["config"]))
-    room["config"] = config.to_dict()
+    result = config_models.validate_config(patch, room["config"])
+    if result.config is None or result.host_config is None:
+        first = result.errors[0]
+        raise config_models.ConfigError(first.field, first.message)
+    config = result.config
+    # The room keeps the host's config: a hidden default stays null (spec 9.3).
+    room["config"] = result.host_config
     if room["state"] == RoomState.LOBBY:
         room["state"] = RoomState.CONFIGURING.value
     config_seq = next_seq(room)

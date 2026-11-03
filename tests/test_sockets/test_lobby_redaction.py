@@ -139,7 +139,11 @@ async def test_no_player_facing_emit_carries_a_secret_key_or_value(
     world: World,
 ) -> None:
     flow = await lobby_to_finish(world)
-    facing = player_facing(world, flow)
+    everything = player_facing(world, flow)
+    # game_finished is the one exception: the end reveals the config (spec 9.3)
+    facing = [r for r in everything if r[1] != "game_finished"]
+    finished = [r[2] for r in everything if r[1] == "game_finished"]
+    assert finished and all(contains_key(f["config"], "random_seed") for f in finished)
     assert facing
     for target, event, data, _ in facing:
         for key in SECRET_KEY_NAMES:

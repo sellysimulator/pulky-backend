@@ -96,7 +96,9 @@ async def test_start_payloads_match_the_engine(world: World) -> None:
         {"alias": "P1", "display_name": "Pulquería P1", "connected": True},
         {"alias": "P2", "display_name": "Pulquería P2", "connected": True},
     ]
-    assert started["config"] == config_public(GameConfig.from_dict(room["config"]))
+    assert started["config"] == config_public(
+        GameConfig.from_host_config(room["config"])
+    )
 
     opened = world.sent(code, "day_opened", start)[0]
     assert opened["brief"] == norm(engine.brief())
@@ -113,6 +115,7 @@ async def test_start_payloads_match_the_engine(world: World) -> None:
     host = world.sent("host-1", "host_state", start)
     assert len(host) == 1
     expected = {**engine.host_view(True), "seq": host[0]["seq"], "full": True}
+    expected["config"] = room["config"]  # the host's config (spec 12.5)
     expected["state"] = "running"
     for alias, row in expected["players"].items():
         row["connected"] = room["participants"][alias]["connected"]
@@ -385,6 +388,7 @@ async def test_player_and_host_state_builders(world: World) -> None:
             "seq": 43,
             "full": full,
             **engine.host_view(full),
+            "config": room["config"],  # the host's config (spec 12.5)
             "state": room["state"],
         }
         for alias, row in expected["players"].items():

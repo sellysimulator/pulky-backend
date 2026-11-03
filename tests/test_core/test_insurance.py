@@ -14,6 +14,7 @@ from app.core.insurance import (
     plan_rows,
     ratio_badge,
     refund_value,
+    shipment_unit_cost,
     tier_fee,
 )
 
@@ -43,8 +44,22 @@ ROW_KEYS = {
     "enabled",
     "refund_basis",
     "refund_value_today",
+    "refund_shipment",
     "fee_per_unit",
 }
+
+
+def rows_of(tiers, spot=12.5, *, spot_units=10, futures_units=0, lead=1, retail=30):
+    """plan_rows with a base price of 12 and, unless given, a spot-only shipment."""
+    return plan_rows(
+        tiers,
+        today_spot_price=spot,
+        base_price=12.0,
+        retail_price=retail,
+        spot_units=spot_units,
+        futures_units=futures_units,
+        lead_time_days=lead,
+    )
 
 
 # --- constants --------------------------------------------------------------
@@ -113,7 +128,7 @@ def test_fm4_dap_refund_is_arrival_spot_not_paid():
 
 
 def test_plan_rows_default():
-    rows = plan_rows(DEFAULT_TIERS, today_spot_price=12.5, retail_price=30)
+    rows = rows_of(DEFAULT_TIERS, 12.5)
     assert [r["tier"] for r in rows] == ["exw", "cip", "dap", "ddp"]
     assert all(set(r) == ROW_KEYS for r in rows)
     by = {r["tier"]: r for r in rows}
@@ -132,12 +147,67 @@ def test_plan_rows_default():
     assert by["ddp"]["fee_per_unit"] == 0.99
 
 
+# --- spec 6.3: the Paid-price card shows what the engine refunds -------------
+
+
+def test_shipment_unit_cost_is_the_average_price_paid():
+    # Spec 5.6 / 6.3 example: 20 spot units at $14.50 and 20 futures units at $12.
+    assert shipment_unit_cost(20, 14.50, 20, 12.0) == 13.25
+    assert 12 * shipment_unit_cost(20, 14.50, 20, 12.0) == 159.0
+    assert shipment_unit_cost(40, 14.50, 0, 12.0) == 14.50
+    assert shipment_unit_cost(0, 14.50, 25, 12.0) == 12.0
+    assert shipment_unit_cost(0, 14.50, 0, 12.0) == 0.0
+
+
+def test_paid_price_card_shows_the_blended_refund_of_a_mixed_shipment():
+    # Bug: the card showed today's spot price ($14.50, so 12 lost units looked like
+    # $174) while the engine refunds the shipment's average ($13.25, so $159).
+    rows = {
+        r["tier"]: r
+        for r in rows_of(DEFAULT_TIERS, 14.50, spot_units=20, futures_units=20)
+    }
+    cip = rows["cip"]
+    assert cip["refund_value_today"] == 13.25
+    assert cip["refund_value_today"] == shipment_unit_cost(20, 14.50, 20, 12.0)
+    assert 12 * cip["refund_value_today"] == 159.0
+    assert cip["refund_shipment"] == {"spot_units": 20, "futures_units": 20}
+
+
+def test_paid_price_card_without_futures_is_the_spot_price_for_any_order():
+    for spot_units in (0, 1, 40):
+        cip = {
+            r["tier"]: r for r in rows_of(DEFAULT_TIERS, 14.50, spot_units=spot_units)
+        }["cip"]
+        assert cip["refund_value_today"] == 14.50
+        assert cip["refund_shipment"] is None
+
+
+def test_paid_price_card_with_only_futures_is_the_base_price():
+    cip = {
+        r["tier"]: r
+        for r in rows_of(DEFAULT_TIERS, 14.50, spot_units=0, futures_units=25)
+    }["cip"]
+    assert cip["refund_value_today"] == 12.0
+    assert cip["refund_shipment"] == {"spot_units": 0, "futures_units": 25}
+
+
+def test_market_price_card_is_todays_spot_price_only_with_no_lead_time():
+    # Spec 6.3: with a lead time of 0 the shipment arrives today, so its refund value
+    # is already known; with 1 or more it is set on the arrival day.
+    same_day = {r["tier"]: r for r in rows_of(DEFAULT_TIERS, 13.40, lead=0)}
+    later = {r["tier"]: r for r in rows_of(DEFAULT_TIERS, 13.40, lead=2)}
+    assert same_day["dap"]["refund_value_today"] == 13.40
+    assert later["dap"]["refund_value_today"] is None
+    for rows in (same_day, later):
+        assert rows["dap"]["refund_shipment"] is None
+        assert rows["ddp"]["refund_value_today"] == 30
+        assert rows["exw"]["refund_value_today"] is None
+
+
 def test_plan_rows_disabled_tier_keeps_stored_fee():
     tiers = dict(DEFAULT_TIERS)
     tiers[DAP] = InsuredTierTerms(enabled=False, fee=0.77)
-    rows = {
-        r["tier"]: r for r in plan_rows(tiers, today_spot_price=12, retail_price=30)
-    }
+    rows = {r["tier"]: r for r in rows_of(tiers, 12)}
     assert len(rows) == 4
     assert rows["dap"]["enabled"] is False
     assert rows["dap"]["fee_per_unit"] == 0.77
@@ -157,7 +227,7 @@ def _walk(obj):
 
 
 def test_plan_rows_no_risk_keys():
-    rows = plan_rows(DEFAULT_TIERS, today_spot_price=12, retail_price=30)
+    rows = rows_of(DEFAULT_TIERS, 12)
     for r in rows:
         for key in r:
             for banned in ("probability", "loss_fraction", "expected", "range"):
@@ -174,7 +244,7 @@ def test_fm5_no_failure_odds_value_in_plan_rows():
     }
     # The calculator inputs are the only place p and L exist; plan_rows takes
     # neither, so no value in any row may equal them, whatever else is passed.
-    rows = plan_rows(tiers, today_spot_price=12.5, retail_price=30)
+    rows = rows_of(tiers, 12.5)
     values = [v for v in _walk(rows) if isinstance(v, (int, float))]
     assert p not in values
     assert loss not in values

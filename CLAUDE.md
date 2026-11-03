@@ -73,6 +73,20 @@ message at startup and every signed-in user is rejected.
   hold by construction, and `tests/test_core/test_stats_flow.py` property-tests them.
 - Shared fixtures in `../docs/plan/fixtures/` are copied unchanged into each repo's
   tests. The backend owns the engine; the frontend only renders what the server sends.
+- **Hidden defaults** (spec 9.3): the four risk odds of `HIDDEN_DEFAULT_KEYS`
+  (`app/core/defaults.py`) reach no host before the game ends. `room["config"]` is the
+  host's config, null at each one left at its default; build the engine's config with
+  `GameConfig.from_host_config` (never `GameConfig.from_dict(room["config"])`), and send
+  only `room["config"]` to the host (`host_state` adds it; the engine's `host_view` has
+  none). `validate_config` takes the host config and returns `host_config`; it skips the
+  break-even warning while the failure chance or loss share is hidden. `game_finished`,
+  the results and the stored `game_configs.config` carry the full config.
+- **Limits are served, not copied**: the frontend reads `limits` from `GET
+  /config/defaults` (`config_schema()`) and each field's bounds from its `fields`; a new
+  limit a form needs goes in `LIMITS` (`app/core/limits.py`), never in the frontend.
+- The Paid-price card's `tier_plans[].refund_value_today` comes from
+  `insurance.shipment_unit_cost`, the function the engine prices shipments with (spec
+  6.3); any change to how a shipment is priced changes both at once.
 
 ## Gotchas
 

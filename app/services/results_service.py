@@ -41,4 +41,7 @@ def results_response(game: StoredGame) -> dict:
         "finished_at": iso_utc(game.finished_at),
         "leaderboard": stats["leaderboard"],
         "stats": {"players": stats["players"], "market": stats["market"]},
+        # The game is over: the full config it ran with, hidden defaults included
+        # (spec 9.3, 13.4).
+        "config": game.config,
     }
