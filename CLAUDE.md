@@ -66,6 +66,11 @@ message at startup and every signed-in user is rejected.
 
 - The wire events and error codes: spec `12-wire.md`. The frontend consumes them.
 - The REST shapes and error details: spec `13-rest-db.md` section 13.4.
+- **One host rule**: "this account hosted this game" is `user_service.is_game_host`, asked by the
+  export's bearer branch (`_may_export`, `app/api/v1/games.py`) and by `GET
+  /users/me/hosted-games/{public_id}` (204, else 404, never 403), which the results page asks
+  before it offers a signed-in host the export without the host secret. Never compare
+  `host_user_id` anywhere else; `tests/test_api/test_hosted_games.py` checks the two agree.
 - End-of-game stats (spec `08-money.md` section 8.6) come from one builder, `app/core/stats.py`
   `build_stats`, for both `game_finished` and the results API. Each player's `flow` (the summary's flow
   chart) is built from the day records plus the free initial pipeline, which both callers pass from the

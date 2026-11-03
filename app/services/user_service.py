@@ -65,6 +65,19 @@ def find_user(db: Session, uid: str) -> User | None:
     return db.scalar(select(User).where(User.firebase_uid == uid))
 
 
+def is_game_host(db: Session, uid: str, game: Game) -> bool:
+    """Whether the account of this verified uid hosted ``game``: it is the game's
+    ``host_user_id``. A game whose host was a guest has none, so no account hosted it.
+
+    The one host rule: the export's bearer proof and ``GET
+    /users/me/hosted-games/{id}`` both ask this, never their own comparison.
+    """
+    if game.host_user_id is None:
+        return False
+    user = find_user(db, uid)
+    return user is not None and user.id == game.host_user_id
+
+
 def ensure_user(db: Session, claims: dict, uid: str) -> User:
     """The caller's row, created from the token when missing."""
     user = stats_service.get_or_create_user(

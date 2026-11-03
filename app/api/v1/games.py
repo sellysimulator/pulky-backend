@@ -69,17 +69,14 @@ async def _may_export(
         and room_service.check_host_secret(room, {"host_secret": secret})
     ):
         return True
-    if game.host_user_id is None or not authorization:
+    if not authorization:
         return False
     parts = authorization.split(" ")
     if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1]:
         return False
     claims = deps.verify_firebase_id_token(parts[1])
     uid = user_service.firebase_uid(claims) if claims else None
-    if uid is None:
-        return False
-    user = user_service.find_user(db, uid)
-    return user is not None and user.id == game.host_user_id
+    return uid is not None and user_service.is_game_host(db, uid, game)
 
 
 @router.get("/games/id/{public_id}/export", response_model=None)

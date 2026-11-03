@@ -93,6 +93,7 @@ ROUTES = [
     ("GET", "/api/v1/users/me/stats"),
     ("GET", "/api/v1/users/me/games"),
     ("GET", f"/api/v1/users/me/games/{'a' * 32}"),
+    ("GET", f"/api/v1/users/me/hosted-games/{'b' * 32}"),
 ]
 
 

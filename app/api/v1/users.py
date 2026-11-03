@@ -1,8 +1,8 @@
-"""Profile routes: upsert, me, stats, games list and detail (spec 13.4)."""
+"""Profile routes: upsert, me, stats, games list and detail, hosted check (13.4)."""
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -87,3 +87,23 @@ def my_game(
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     stored = db_service.load_stored_game(db, game.id)
     return {**results_service.results_response(stored), "my_alias": alias}
+
+
+@router.get(
+    "/users/me/hosted-games/{public_id}", status_code=204, response_class=Response
+)
+def my_hosted_game(
+    public_id: str,
+    claims: dict[str, Any] = Depends(deps.get_current_firebase_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """204 when the caller's account hosted this game (``is_game_host``, the rule the
+    export's bearer proof uses), so the results page can offer the export without the
+    room's host secret. 404, never 403, otherwise: a game someone else hosted answers
+    exactly like an unknown id, so this route is not a game-existence oracle.
+    """
+    uid = _uid(claims)
+    game = db_service.find_game_by_public_id(db, public_id)
+    if game is None or not user_service.is_game_host(db, uid, game):
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    return Response(status_code=204)
