@@ -130,6 +130,16 @@ class FakeRedis:
         return _FakeLock(lock)
 
 
+@pytest.fixture(autouse=True)
+def _fresh_abuse_limits() -> Iterator[None]:
+    """Every test starts with no request, event or socket counted (spec 0.6)."""
+    from app.core import abuse
+
+    abuse.reset()
+    yield
+    abuse.reset()
+
+
 @pytest.fixture
 def fake_redis(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRedis]:
     from app.services import state_backend

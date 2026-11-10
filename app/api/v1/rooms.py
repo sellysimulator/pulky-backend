@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 FORBIDDEN_MESSAGE = "Only the host can do that."
+TOO_MANY_ROOMS = "Too many games are open right now. Try again in a few minutes."
 
 
 async def _authorised_room(code: str, secret: str | None) -> dict:
@@ -32,7 +33,11 @@ async def create_room(body: CreateRoomRequest | None = None) -> dict[str, Any]:
     name = room_service.sanitise_display_name(raw_name, "Host")
     # The host's config: null at each hidden default (spec 9.3).
     config = host_default_config()
-    room = await state_service.get_state_service().create_room(config, name)
+    try:
+        room = await state_service.get_state_service().create_room(config, name)
+    except state_service.RoomLimitReached:
+        logger.warning("room creation refused: live room limit reached")
+        raise HTTPException(status_code=503, detail=TOO_MANY_ROOMS) from None
     logger.info("room %s created", room["room_code"])
     return {
         "room_code": room["room_code"],

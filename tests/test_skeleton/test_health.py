@@ -9,11 +9,17 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+from app.api.v1 import health
 from app.db import session as db_session
 from app.services import state_backend
 from tests.test_skeleton.helpers import patch_settings
 
 DEEP_KEYS = {"status", "database", "redis", "state_backend"}
+
+
+@pytest.fixture(autouse=True)
+def _no_cached_deep_answer(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(health, "_deep_cache", None)
 
 
 def _db_down(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -182,3 +188,15 @@ def test_deep_probe_times_out_instead_of_hanging(
     assert time.monotonic() - started < 6
     assert body["redis"] == "error"
     assert body["status"] == "degraded"
+
+
+def test_deep_reuses_its_answer_inside_the_cache_window(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fails against a /health/deep that probes the database on every call."""
+    _db_up(monkeypatch)
+    assert client.get("/api/v1/health/deep").json()["database"] == "ok"
+    _db_down(monkeypatch)
+    assert client.get("/api/v1/health/deep").json()["database"] == "ok"
+    monkeypatch.setattr(health, "DEEP_CACHE_SECONDS", 0.0)
+    assert client.get("/api/v1/health/deep").json()["database"] == "error"

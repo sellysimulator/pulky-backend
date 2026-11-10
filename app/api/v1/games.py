@@ -74,7 +74,7 @@ async def _may_export(
     parts = authorization.split(" ")
     if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1]:
         return False
-    claims = deps.verify_firebase_id_token(parts[1])
+    claims = await deps.verify_id_token(parts[1])
     uid = user_service.firebase_uid(claims) if claims else None
     return uid is not None and user_service.is_game_host(db, uid, game)
 

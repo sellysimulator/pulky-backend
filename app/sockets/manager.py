@@ -5,6 +5,7 @@ from typing import Any
 import socketio
 
 from app.config import settings
+from app.core import abuse
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
@@ -16,6 +17,7 @@ sio = socketio.AsyncServer(
     cors_allowed_origins=settings.CORS_ORIGINS,
     logger=settings.DEBUG,
     engineio_logger=settings.DEBUG,
+    max_http_buffer_size=abuse.MAX_BODY_BYTES,
 )
 
 

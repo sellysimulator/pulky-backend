@@ -184,3 +184,26 @@ def test_optional_user_returns_claims_for_a_valid_token(
     firebase_tokens["good"] = {"uid": "u1"}
     response = auth_client.get("/maybe", headers={"Authorization": "Bearer good"})
     assert response.json() == {"user": {"uid": "u1"}}
+
+
+@pytest.mark.parametrize("claims", [{}, {"uid": ""}, {"uid": 7}, {"sub": "u1"}])
+def test_verification_rejects_claims_without_a_string_uid(
+    monkeypatch: pytest.MonkeyPatch, fake_service_account: None, claims: dict
+) -> None:
+    from firebase_admin import auth
+
+    monkeypatch.setattr(auth, "verify_id_token", lambda *a, **k: claims)
+    assert deps.verify_firebase_id_token("good") is None
+
+
+@pytest.mark.asyncio
+async def test_async_verification_runs_the_helper_and_refuses_oversized_tokens(
+    firebase_tokens: FirebaseTokens,
+) -> None:
+    long_token = "t" * (deps.MAX_ID_TOKEN_LENGTH + 1)
+    firebase_tokens["good"] = {"uid": "u1"}
+    firebase_tokens[long_token] = {"uid": "u2"}
+    assert await deps.verify_id_token("good") == {"uid": "u1"}
+    assert await deps.verify_id_token(long_token) is None
+    assert await deps.verify_id_token({"token": "good"}) is None
+    assert await deps.verify_id_token("") is None

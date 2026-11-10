@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import all_routers
 from app.config import settings
+from app.core.abuse import AbuseMiddleware
 from app.core.checks import run_startup_checks
 from app.sockets import handlers  # noqa: F401  (modules register themselves)
 from app.sockets.manager import sio
@@ -22,6 +23,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title=settings.APP_NAME, version=settings.VERSION, lifespan=lifespan)
 
+# Added first so CORS stays outermost and a 429 or 413 still carries CORS headers.
+app.add_middleware(AbuseMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
