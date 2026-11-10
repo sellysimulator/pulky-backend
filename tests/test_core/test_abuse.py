@@ -1,5 +1,6 @@
 """Abuse limits (spec 0.6): the rate limiter, the client IP and the REST verdicts."""
 
+import logging
 from collections.abc import Iterator
 from typing import Any
 
@@ -206,6 +207,17 @@ def test_app_answers_429_with_detail_retry_after_and_cors(
     assert refused.headers["access-control-allow-origin"] == origin["Origin"]
 
 
+def test_a_429_exposes_retry_after_to_browsers(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(abuse, "rest_limiter", RateLimiter(1))
+    headers = {"Origin": "https://pulkysim.web.app"}
+    assert client.get("/api/v1/rooms/ABCD/status", headers=headers).status_code != 429
+    refused = client.get("/api/v1/rooms/ABCD/status", headers=headers)
+    assert refused.status_code == 429
+    assert "Retry-After" in refused.headers["access-control-expose-headers"]
+
+
 def test_app_answers_413_for_a_large_body(client: TestClient) -> None:
     body = {"config": {"x": "y" * abuse.MAX_BODY_BYTES}}
     response = client.post("/api/v1/config/validate", json=body)
@@ -319,3 +331,31 @@ def test_a_malformed_room_code_in_a_path_takes_no_lock(
         headers={"x-host-secret": "x"},
     )
     assert response.status_code == 404
+
+
+def test_client_ip_source_is_logged_once_and_never_the_ip(caplog) -> None:
+    xff = {
+        "headers": [(b"x-forwarded-for", b"6.6.6.6, 203.0.113.7")],
+        "client": ("10.0.0.1", 1),
+    }
+    peer = {"headers": [], "client": ("203.0.113.7", 1)}
+    with caplog.at_level(logging.INFO, logger="app.core.abuse"):
+        assert client_ip(xff) == "203.0.113.7"
+        assert client_ip(xff) == "203.0.113.7"
+        assert caplog.text.count("client ip source: x-forwarded-for (2 entries)") == 1
+        assert client_ip(peer) == "203.0.113.7"
+    assert caplog.text.count("client ip source: peer") == 1
+    with caplog.at_level(logging.INFO, logger="app.core.abuse"):
+        for n in (4, 5, 9):
+            many = {
+                "headers": [
+                    (
+                        b"x-forwarded-for",
+                        b",".join([b"6.6.6.6"] * (n - 1) + [b"203.0.113.7"]),
+                    )
+                ]
+            }
+            assert client_ip(many) == "203.0.113.7"
+    assert caplog.text.count("client ip source: x-forwarded-for (3+ entries)") == 1
+    assert caplog.text.count("client ip source:") == 3
+    assert "203.0.113.7" not in caplog.text

@@ -4,6 +4,8 @@ import logging
 import re
 import uuid
 
+import socketio  # type: ignore[import-untyped]
+
 from app.api import deps
 from app.core import abuse
 from app.services import room_service, state_service
@@ -14,13 +16,19 @@ logger = logging.getLogger(__name__)
 
 GUEST_RE = re.compile(r"^guest_[0-9a-f-]{36}$")
 
+# Shown by the client's `connect_error`. Deliberately free of auth words: being
+# over the limit is no reason to sign in again.
+TOO_MANY_CONNECTIONS_MESSAGE = (
+    "Too many connections from your network. Try again in a minute."
+)
+
 
 @sio.event
 async def connect(sid: str, environ: dict, auth: dict | None = None) -> bool | None:
     """Set the identity once; a token that fails verification rejects the socket, and
     so does one more socket than the abuse limits allow (spec 0.6)."""
-    if not abuse.open_socket(sid, environ):
-        return False
+    if not abuse.open_socket(sid, environ):  # no slot taken, so none to give back
+        raise socketio.exceptions.ConnectionRefusedError(TOO_MANY_CONNECTIONS_MESSAGE)
     claims = auth if isinstance(auth, dict) else {}
     id_token = claims.get("idToken")
     guest_id = claims.get("guestId")

@@ -65,7 +65,8 @@ message at startup and every signed-in user is rejected.
   choke points only: `AbuseMiddleware` (REST, `app/main.py`), `@guarded` (socket events) and the
   handshake (`connection.py`, open sockets). A new costly public route goes in `ROUTE_LIMITS`; never
   add a per-handler check. Take the client IP only from `abuse.client_ip` (`CF-Connecting-IP`, else
-  rightmost `X-Forwarded-For`, else the peer). Async code verifies tokens with
+  rightmost `X-Forwarded-For`, else the peer). The first request from each IP source logs
+  `client ip source: …` (never the IP), so the deployment's header can be checked in Render's logs. Async code verifies tokens with
   `await deps.verify_id_token(...)`. CPU-bound routes (`POST /config/validate`, `POST
   /config/preview`) are plain `def`, so FastAPI runs them in its threadpool.
 

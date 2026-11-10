@@ -5,9 +5,12 @@ size is bounded. The limits are constants, not settings. Standard library only.
 """
 
 import json
+import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping, MutableMapping
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Rates are per fixed window of WINDOW_SECONDS. A classroom often shares one IP.
 WINDOW_SECONDS = 60.0
@@ -107,6 +110,16 @@ _open_per_ip: dict[str, int] = {}
 _sid_ip: dict[str, str] = {}
 
 
+_logged_ip_sources: set[str] = set()
+
+
+def _note_ip_source(source: str) -> None:
+    """Log, once per process, which branch of ``client_ip`` answered (never the IP)."""
+    if source not in _logged_ip_sources:
+        _logged_ip_sources.add(source)
+        logger.info("client ip source: %s", source)
+
+
 def client_ip(scope: Mapping[str, Any]) -> str:
     """The caller's address, from an ASGI scope (a Socket.IO ``environ`` carries its
     scope under ``"asgi.scope"``). Order: ``CF-Connecting-IP`` (Cloudflare, in front of
@@ -115,13 +128,19 @@ def client_ip(scope: Mapping[str, Any]) -> str:
     headers = scope.get("headers") or ()
     for k, v in headers:
         if k == b"cf-connecting-ip" and v.strip():
+            _note_ip_source("cf-connecting-ip")
             return v.decode("latin-1").strip()[:64]
     forwarded = [v for k, v in headers if k == b"x-forwarded-for"]
     if forwarded:
-        last = forwarded[-1].decode("latin-1").split(",")[-1].strip()
+        parts = forwarded[-1].decode("latin-1").split(",")
+        last = parts[-1].strip()
         if last:
+            n = sum(1 for part in parts if part.strip())
+            n_label = str(n) if n <= 3 else "3+"
+            _note_ip_source(f"x-forwarded-for ({n_label} entries)")
             return last[:64]
     peer = scope.get("client")
+    _note_ip_source("peer" if peer else "unknown")
     return str(peer[0]) if peer else UNKNOWN_IP
 
 
@@ -261,3 +280,4 @@ def reset() -> None:
         limiter.clear()
     _open_per_ip.clear()
     _sid_ip.clear()
+    _logged_ip_sources.clear()

@@ -4,11 +4,16 @@ import inspect
 from typing import Any
 
 import pytest
+import socketio  # type: ignore[import-untyped]
 
 from app.api.v1 import config as config_routes
 from app.core import abuse
 from app.services.state_service import StateService
-from app.sockets.handlers.connection import connect, disconnect
+from app.sockets.handlers.connection import (
+    TOO_MANY_CONNECTIONS_MESSAGE,
+    connect,
+    disconnect,
+)
 from app.sockets.handlers.lobby import join
 from app.sockets.handlers.play import preview_decision, request_state
 from tests.test_sockets.conftest import World, guest
@@ -27,7 +32,11 @@ async def test_handshake_refuses_sockets_past_the_ip_cap(
     monkeypatch.setattr(abuse, "SOCKETS_PER_IP", 2)
     assert await connect("s1", environ("1.1.1.1"), {"guestId": guest(1)}) is None
     assert await connect("s2", environ("1.1.1.1"), None) is None
-    assert await connect("s3", environ("1.1.1.1"), None) is False
+    with pytest.raises(
+        socketio.exceptions.ConnectionRefusedError, match="Too many connections"
+    ) as refused:
+        await connect("s3", environ("1.1.1.1"), None)
+    assert refused.value.error_args["message"] == TOO_MANY_CONNECTIONS_MESSAGE
     assert "s3" not in world.sm.sid_to_identity
     assert await connect("t1", environ("2.2.2.2"), None) is None
     await disconnect("s1")
