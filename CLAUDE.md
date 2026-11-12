@@ -61,6 +61,14 @@ message at startup and every signed-in user is rejected.
 - Handlers that can fail are wrapped in `@guarded()`; errors never carry exception text.
 - REST errors are `HTTPException` with a string `detail`; never return `str(e)`.
 - Never log secrets, tokens, identities or payloads.
+- Abuse limits (spec `00-security.md` §0.6) are constants in `app/core/abuse.py`, enforced at three
+  choke points only: `AbuseMiddleware` (REST, `app/main.py`), `@guarded` (socket events) and the
+  handshake (`connection.py`, open sockets). A new costly public route goes in `ROUTE_LIMITS`; never
+  add a per-handler check. Take the client IP only from `abuse.client_ip` (`CF-Connecting-IP`, else
+  rightmost `X-Forwarded-For`, else the peer). The first request from each IP source logs
+  `client ip source: …` (never the IP), so the deployment's header can be checked in Render's logs. Async code verifies tokens with
+  `await deps.verify_id_token(...)`. CPU-bound routes (`POST /config/validate`, `POST
+  /config/preview`) are plain `def`, so FastAPI runs them in its threadpool.
 
 ## Contracts that span both repos
 

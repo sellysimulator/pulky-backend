@@ -162,7 +162,7 @@ def world(
         ),
         "O": make_room(
             engine,
-            code="OOO222",
+            code="BBB222",
             host_identity=BOB,
             started_at="2026-10-14T10:00:00Z",
             finished_at="2026-10-14T11:00:00Z",

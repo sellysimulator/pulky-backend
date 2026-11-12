@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+import weakref
 from collections.abc import Callable
 from typing import Protocol, Self, cast
 
@@ -47,12 +48,15 @@ class _MemoryLock:
 
 class InMemoryBackend:
     """Room documents in this process's memory, expired lazily on read (no sweeper
-    task). It stores JSON strings and never live engine objects."""
+    task). It stores JSON strings and never live engine objects. A lock lives only
+    while someone holds or awaits it, so lock entries never accumulate."""
 
     def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
         self._store: dict[str, tuple[float | None, str]] = {}
-        self._locks: dict[str, asyncio.Lock] = {}
+        self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = (
+            weakref.WeakValueDictionary()
+        )
 
     def _live(self, key: str) -> str | None:
         entry = self._store.get(key)
@@ -81,7 +85,6 @@ class InMemoryBackend:
         for key in keys:
             if self._store.pop(key, None) is not None:
                 removed += 1
-            self._locks.pop(key, None)
         return removed
 
     async def exists(self, key: str) -> int:
@@ -94,6 +97,11 @@ class InMemoryBackend:
             self._locks[key] = lock
         return _MemoryLock(lock, timeout)
 
+    def count_live(self) -> int:
+        """How many entries are live, after dropping the expired ones."""
+        self.purge_expired()
+        return len(self._store)
+
     def purge_expired(self) -> int:
         """Drop every expired entry; return how many went."""
         now = self._clock()
@@ -102,7 +110,6 @@ class InMemoryBackend:
         ]
         for key in dead:
             del self._store[key]
-            self._locks.pop(key, None)
         return len(dead)
 
 

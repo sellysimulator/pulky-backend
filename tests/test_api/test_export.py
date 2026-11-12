@@ -262,7 +262,7 @@ def test_fm1_formula_injection_in_a_pulqueria_name(
     api: TestClient, factory: Callable[[], Session], db_session: Session
 ) -> None:
     eng = play_game(players=7, names=INJECTORS)
-    gid = persist(make_room(eng, code="INJ777"), factory)
+    gid = persist(make_room(eng, code="XNJ777"), factory)
     text, _ = stored_export(db_session, gid)
     names = {r["alias"]: r["display_name"] for r in parse_csv(text)}
     assert names["P1"] == '\'=HYPERLINK("x")'
@@ -275,7 +275,7 @@ def test_fm1_formula_injection_in_a_pulqueria_name(
     for row in parse_csv(text):
         assert row["display_name"][:1] not in ("=", "+", "-", "@", "\t", "\r")
     # and through the route, as the host of the live room
-    room = make_room(eng, code="INJ777")
+    room = make_room(eng, code="XNJ777")
     put_live_room(live_room_for(gid, room, secret="live-secret-INJ"))
     res = api.get(url(gid), headers={"X-Host-Secret": "live-secret-INJ"})
     assert res.status_code == 200
@@ -371,14 +371,14 @@ def test_fm6_the_secret_of_a_different_live_room_does_not_export(
     elsewhere = persist(
         make_room(
             engine,
-            code="OTH222",
+            code="QTH222",
             started_at="2026-10-14T09:00:00Z",
             finished_at="2026-10-14T10:00:00Z",
         ),
         factory,
     )
     put_live_room(
-        live_room_for(elsewhere, game["room"], secret="secret-of-OTH222", code="OTH222")
+        live_room_for(elsewhere, game["room"], secret="secret-of-OTH222", code="QTH222")
     )
     res = api.get(url(game["id"]), headers={"X-Host-Secret": "secret-of-OTH222"})
     assert res.status_code == 403 and res.json() == HOST_FORBIDDEN

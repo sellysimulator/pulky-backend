@@ -97,6 +97,29 @@ async def test_locks_on_different_keys_do_not_block_each_other() -> None:
 
 
 @pytest.mark.asyncio
+async def test_lock_entries_go_once_nobody_holds_or_awaits_them() -> None:
+    """Fails against a lock table that keeps one entry per key ever used."""
+    backend = InMemoryBackend()
+    held = backend.lock("lock:room:ABC234")
+    async with held:
+        waiter = asyncio.create_task(_take(backend, "lock:room:ABC234"))
+        await asyncio.sleep(0.01)
+        assert not waiter.done()
+        assert len(backend._locks) == 1
+    await asyncio.wait_for(waiter, timeout=1)
+    del held, waiter
+    for n in range(100):
+        async with backend.lock(f"lock:room:{n}"):
+            pass
+    assert len(backend._locks) == 0
+
+
+async def _take(backend: Any, key: str) -> None:
+    async with backend.lock(key):
+        pass
+
+
+@pytest.mark.asyncio
 async def test_memory_backend_fixture_moves_time(memory_backend: Any) -> None:
     assert state_backend.get_state_backend() is memory_backend
     await memory_backend.setex("k", 30, "v")

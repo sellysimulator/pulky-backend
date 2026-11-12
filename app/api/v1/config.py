@@ -20,7 +20,8 @@ def _issues(items: list[config_models.FieldIssue]) -> list[dict[str, str | None]
 
 
 @router.post("/config/validate")
-async def config_validate(body: ConfigValidateRequest) -> dict[str, Any]:
+def config_validate(body: ConfigValidateRequest) -> dict[str, Any]:
+    # A plain def: FastAPI runs it in its threadpool, off the event loop.
     result = config_models.validate_config(body.config, None)
     return {
         "ok": len(result.errors) == 0,
@@ -30,10 +31,11 @@ async def config_validate(body: ConfigValidateRequest) -> dict[str, Any]:
 
 
 @router.post("/config/preview")
-async def config_preview(body: ConfigValidateRequest) -> dict[str, Any]:
+def config_preview(body: ConfigValidateRequest) -> dict[str, Any]:
     """The host screen's figures for a draft config (spec 13.4, 13.9, 13.10): null
     while the draft has an error, and null at each figure that needs a hidden
-    default the draft leaves blank (spec 9.3)."""
+    default the draft leaves blank (spec 9.3). A plain def, like
+    ``config_validate``: FastAPI runs it in its threadpool, off the event loop."""
     result = config_models.validate_config(body.config, None)
     if result.host_config is None:
         return {"preview": None}

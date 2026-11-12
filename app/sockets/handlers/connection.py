@@ -4,7 +4,10 @@ import logging
 import re
 import uuid
 
+import socketio  # type: ignore[import-untyped]
+
 from app.api import deps
+from app.core import abuse
 from app.services import room_service, state_service
 from app.sockets import manager as sockets_manager
 from app.sockets.manager import sio
@@ -13,16 +16,26 @@ logger = logging.getLogger(__name__)
 
 GUEST_RE = re.compile(r"^guest_[0-9a-f-]{36}$")
 
+# Shown by the client's `connect_error`. Deliberately free of auth words: being
+# over the limit is no reason to sign in again.
+TOO_MANY_CONNECTIONS_MESSAGE = (
+    "Too many connections from your network. Try again in a minute."
+)
+
 
 @sio.event
 async def connect(sid: str, environ: dict, auth: dict | None = None) -> bool | None:
-    """Set the identity once; a token that fails verification rejects the socket."""
+    """Set the identity once; a token that fails verification rejects the socket, and
+    so does one more socket than the abuse limits allow (spec 0.6)."""
+    if not abuse.open_socket(sid, environ):  # no slot taken, so none to give back
+        raise socketio.exceptions.ConnectionRefusedError(TOO_MANY_CONNECTIONS_MESSAGE)
     claims = auth if isinstance(auth, dict) else {}
     id_token = claims.get("idToken")
     guest_id = claims.get("guestId")
     if id_token:
-        decoded = deps.verify_firebase_id_token(id_token)
+        decoded = await deps.verify_id_token(id_token)
         if not decoded:
+            abuse.close_socket(sid)
             return False  # reject; never downgrade to guest
         identity = str(decoded["uid"])
     elif isinstance(guest_id, str) and GUEST_RE.match(guest_id):
@@ -78,4 +91,7 @@ async def disconnect(sid: str) -> None:
                 await state.save_room(code, room)
         await room_service.send(emits)
     finally:
-        sockets.forget(sid)
+        try:
+            sockets.forget(sid)
+        finally:
+            abuse.close_socket(sid)

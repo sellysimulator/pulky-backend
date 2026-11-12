@@ -101,6 +101,20 @@ def test_create_room_response(client: TestClient) -> None:
     assert resolve_hidden_defaults(body["config"]) == DEFAULT_CONFIG
 
 
+def test_create_room_503_at_the_live_room_limit(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services import state_service
+
+    monkeypatch.setattr(state_service, "MAX_LIVE_ROOMS", 1)
+    create(client)
+    response = client.post(f"{API}/rooms/create", json={})
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Too many games are open right now. Try again in a few minutes."
+    }
+
+
 def test_create_room_stores_the_room(client: TestClient) -> None:
     body = create(client, host_display_name="Ms. Ruiz")
     room = load(body["room_code"])

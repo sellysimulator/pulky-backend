@@ -328,11 +328,36 @@ async def test_delete_room(svc: StateService) -> None:
     assert await svc.room_exists(room["room_code"]) is False
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "code", ["", "ABC23", "ABC2345", "ABC1O0", "ABC 23", "X" * 100_000, None, 7, ["A"]]
+)
+async def test_malformed_codes_take_no_lock_and_touch_no_key(
+    backend: Any, code: Any
+) -> None:
+    """A client-supplied code that no room can hold builds no key and no lock."""
+    spy = SpyBackend(backend)
+    svc = StateService(spy)
+    assert await svc.get_room(code) is None
+    assert await svc.room_exists(code) is False
+    async with svc.lock(code):
+        pass
+    assert spy.lock_calls == []
+
+
+def test_is_room_code_accepts_any_case_of_the_alphabet() -> None:
+    assert state_service.is_room_code("ABC234")
+    assert state_service.is_room_code("abc234")
+    assert state_service.is_room_code(generate_room_code())
+    assert not state_service.is_room_code("ABCI34")  # I is not in the alphabet
+    assert not state_service.is_room_code("ABC23\u00df")  # upper() grows it
+
+
 # --- AC 4 / failure mode 2: schema guard -------------------------------------
 
 
 def _stale_variants() -> list[tuple[str, dict[str, Any]]]:
-    good = _doc("OLD234")
+    good = _doc("STE234")
     no_sid = {k: v for k, v in good.items() if k != "sid_to_alias"}
     no_secret = {k: v for k, v in good.items() if k != "host_secret"}
     no_version = {k: v for k, v in good.items() if k != "schema_version"}
@@ -356,21 +381,21 @@ async def test_stale_document_is_deleted_and_not_returned(
 
     Fails against a service that migrates it in place (returns or re-saves it).
     """
-    await backend.setex("room:OLD234", 60, json.dumps(doc))
-    assert await svc.get_room("OLD234") is None
-    assert await backend.exists("room:OLD234") == 0
-    assert await backend.get("room:OLD234") is None
-    assert await svc.get_room("OLD234") is None
-    assert await svc.room_exists("OLD234") is False
+    await backend.setex("room:STE234", 60, json.dumps(doc))
+    assert await svc.get_room("STE234") is None
+    assert await backend.exists("room:STE234") == 0
+    assert await backend.get("room:STE234") is None
+    assert await svc.get_room("STE234") is None
+    assert await svc.room_exists("STE234") is False
 
 
 @pytest.mark.asyncio
 async def test_current_document_survives_the_guard(
     svc: StateService, backend: Any
 ) -> None:
-    await backend.setex("room:GOOD22", 60, json.dumps(_doc("GOOD22")))
-    assert await svc.get_room("GOOD22") == _doc("GOOD22")
-    assert await backend.exists("room:GOOD22") == 1
+    await backend.setex("room:KEEP22", 60, json.dumps(_doc("KEEP22")))
+    assert await svc.get_room("KEEP22") == _doc("KEEP22")
+    assert await backend.exists("room:KEEP22") == 1
 
 
 # --- AC 5 / failure mode 4: TTL ----------------------------------------------
@@ -387,12 +412,41 @@ async def test_save_sets_ttl(backend: Any) -> None:
 
 
 @pytest.mark.asyncio
-async def test_default_ttl_is_24_hours(svc: StateService, backend: Any) -> None:
+async def test_default_ttl_is_2_hours_in_the_lobby_then_24_hours(
+    svc: StateService, backend: Any
+) -> None:
+    """Fails against a room that never started keeping the 24 h TTL (spec 0.6)."""
+    for state in ("lobby", "configuring"):
+        room = await svc.create_room({}, "H")
+        room["state"] = state
+        await svc.save_room(room["room_code"], room)
+        backend.advance(7200 - 1)
+        assert await svc.get_room(room["room_code"]) is not None
+        backend.advance(2)
+        assert await svc.get_room(room["room_code"]) is None
+
     room = await svc.create_room({}, "H")
+    room["state"] = "running"
+    await svc.save_room(room["room_code"], room)
     backend.advance(86_400 - 1)
     assert await svc.get_room(room["room_code"]) is not None
     backend.advance(2)
     assert await svc.get_room(room["room_code"]) is None
+
+
+@pytest.mark.asyncio
+async def test_in_memory_rooms_stop_at_the_live_room_limit(
+    memory_backend: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(state_service, "MAX_LIVE_ROOMS", 2)
+    svc = StateService(memory_backend)
+    await svc.create_room({}, "A")
+    await svc.create_room({}, "B")
+    with pytest.raises(state_service.RoomLimitReached):
+        await svc.create_room({}, "C")
+    memory_backend.advance(7200)  # both expire unstarted, and the count drops them
+    assert memory_backend.count_live() == 0
+    assert (await svc.create_room({}, "D"))["host_display_name"] == "D"
 
 
 @pytest.mark.asyncio

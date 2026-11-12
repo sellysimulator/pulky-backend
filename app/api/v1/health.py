@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 
 from fastapi import APIRouter
 from sqlalchemy import text
@@ -15,6 +16,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 PROBE_TIMEOUT_SECONDS = 2.0
+# /health/deep probes the database; repeated calls inside this window reuse the answer.
+DEEP_CACHE_SECONDS = 15.0
+
+_deep_cache: tuple[float, dict[str, str]] | None = None
 
 
 @router.get("/health")
@@ -55,11 +60,17 @@ async def _redis_status() -> str:
 
 @router.get("/health/deep")
 async def health_deep() -> dict[str, str]:
+    global _deep_cache
+    now = time.monotonic()
+    if _deep_cache is not None and now - _deep_cache[0] < DEEP_CACHE_SECONDS:
+        return dict(_deep_cache[1])
     database, redis = await asyncio.gather(_database_status(), _redis_status())
     degraded = "error" in (database, redis)
-    return {
+    body = {
         "status": "degraded" if degraded else "ok",
         "database": database,
         "redis": redis,
         "state_backend": "redis" if get_settings().REDIS_ENABLED else "memory",
     }
+    _deep_cache = (now, body)
+    return dict(body)

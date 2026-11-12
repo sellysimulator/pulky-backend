@@ -111,6 +111,23 @@ async def test_guarded_passes_through_a_normal_handler(
     assert fake_socket_manager.records == []
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [["ABC234"], "ABC234", 7, b"x"])
+async def test_guarded_hands_a_non_object_payload_over_as_none(
+    fake_socket_manager: FakeSocketManager, payload: Any
+) -> None:
+    seen: list[Any] = []
+
+    @guarded()
+    async def handler(sid: str, data: dict | None = None) -> None:
+        seen.append(data)
+
+    await handler("s", payload)
+    await handler("s", {"room_id": "ABC234"})
+    assert seen == [None, {"room_id": "ABC234"}]
+    assert fake_socket_manager.records == []
+
+
 def test_logger_follows_debug_false() -> None:
     """Failure mode 3 / AC12: no hardcoded engine.io payload logging."""
     out = _run(
