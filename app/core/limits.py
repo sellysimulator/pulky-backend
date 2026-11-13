@@ -15,6 +15,10 @@ MAX_MONEY = 1e6
 MAX_DISPLAY_NAME = 24
 ROOM_TTL_SECONDS = 86400
 LOCK_TIMEOUT_SECONDS = 10
+# How many rooms one POST /rooms/batch-create makes (the multi-game host dashboard).
+# Each counts against the per-IP room-create limit (app/core/abuse.py).
+MIN_BATCH_ROOMS = 2
+MAX_BATCH_ROOMS = 10
 
 LIMITS: dict[str, int | float] = {
     "MIN_PLAYERS_TO_START": MIN_PLAYERS_TO_START,
@@ -32,4 +36,6 @@ LIMITS: dict[str, int | float] = {
     "MAX_DISPLAY_NAME": MAX_DISPLAY_NAME,
     "ROOM_TTL_SECONDS": ROOM_TTL_SECONDS,
     "LOCK_TIMEOUT_SECONDS": LOCK_TIMEOUT_SECONDS,
+    "MIN_BATCH_ROOMS": MIN_BATCH_ROOMS,
+    "MAX_BATCH_ROOMS": MAX_BATCH_ROOMS,
 }

@@ -16,8 +16,12 @@ logger = logging.getLogger(__name__)
 WINDOW_SECONDS = 60.0
 REST_PER_IP = 600  # every REST request, per IP
 ROOM_LOOKUPS_PER_IP = 120  # requests that name a room code the caller is not in
-ROUTE_LIMITS: dict[str, int] = {  # costly public routes, per IP, on top of REST_PER_IP
-    "POST /api/v1/rooms/create": 10,
+CREATE_ROUTE = "POST /api/v1/rooms/create"
+# Costly public routes, per IP, on top of REST_PER_IP. POST /api/v1/rooms/batch-create
+# is deliberately absent: it charges the create limit one hit per room it makes
+# (`allow_room_creates`), so the middleware leaves it on REST_PER_IP alone.
+ROUTE_LIMITS: dict[str, int] = {
+    CREATE_ROUTE: 10,
     "POST /api/v1/config/validate": 300,
     "POST /api/v1/config/preview": 300,
 }
@@ -64,21 +68,28 @@ class RateLimiter:
         self._clock = clock
         self._hits: dict[str, tuple[float, int]] = {}
 
-    def allow(self, key: str) -> bool:
+    def allow(self, key: str, cost: int = 1) -> bool:
+        """Count ``cost`` hits for ``key``; ``False`` when they would pass the limit.
+
+        All or nothing: a refused call counts nothing, so a batch too big for what is
+        left of the window (``POST /rooms/batch-create`` costs one hit per room) does
+        not use up the rest of it."""
         now = self._clock()
         entry = self._hits.get(key)
         if entry is not None and now - entry[0] < self.window:
-            if entry[1] >= self.limit:
+            if entry[1] + cost > self.limit:
                 return False
-            self._hits[key] = (entry[0], entry[1] + 1)
+            self._hits[key] = (entry[0], entry[1] + cost)
             return True
+        if cost > self.limit:
+            return False
         self._hits.pop(key, None)
         while self._hits:
             oldest, (start, _) = next(iter(self._hits.items()))
             if now - start < self.window:
                 break
             del self._hits[oldest]
-        self._hits[key] = (now, 1)
+        self._hits[key] = (now, cost)
         if len(self._hits) > self.max_keys:
             self._trim()
         return True
@@ -175,6 +186,18 @@ def rest_verdict(scope: Mapping[str, Any]) -> int | None:
     if limiter is not None and not limiter.allow(ip):
         return 429
     return None
+
+
+def allow_room_creates(scope: Mapping[str, Any], count: int) -> bool:
+    """Charge ``count`` room creations to the caller's ``POST /rooms/create`` budget,
+    all or nothing. ``POST /rooms/batch-create`` calls this once it has validated its
+    config, so a refused config or batch costs nothing."""
+    return route_limiters[CREATE_ROUTE].allow(client_ip(scope), cost=count)
+
+
+def create_retry_after() -> str:
+    """The ``Retry-After`` of a refused room creation, in whole seconds."""
+    return str(int(route_limiters[CREATE_ROUTE].window))
 
 
 Scope = MutableMapping[str, Any]

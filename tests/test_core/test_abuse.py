@@ -64,6 +64,44 @@ def test_limiter_forgets_ended_windows_and_never_exceeds_max_keys() -> None:
     assert len(limiter) == 0
 
 
+def test_limiter_charges_a_cost_all_or_nothing() -> None:
+    # POST /rooms/batch-create charges one hit per room it makes.
+    clock = Clock()
+    limiter = RateLimiter(5, 60, clock=clock)
+    assert limiter.allow("a", cost=3)
+    # 3 + 3 > 5: refused, and the refused call is not counted...
+    assert not limiter.allow("a", cost=3)
+    # ...so the 2 that are left can still be used.
+    assert limiter.allow("a", cost=2)
+    assert not limiter.allow("a")
+    clock.now += 60
+    assert limiter.allow("a", cost=5)
+
+
+def test_limiter_refuses_a_cost_bigger_than_the_limit_and_counts_nothing() -> None:
+    limiter = RateLimiter(5, 60, clock=Clock())
+    assert not limiter.allow("a", cost=6)
+    assert len(limiter) == 0
+    assert limiter.allow("a", cost=5)
+
+
+def test_allow_room_creates_charges_the_create_route_budget() -> None:
+    create = scope("/api/v1/rooms/create", "POST")
+    limit = abuse.ROUTE_LIMITS[abuse.CREATE_ROUTE]
+    assert abuse.allow_room_creates(create, limit - 1)
+    assert not abuse.allow_room_creates(create, 2)
+    assert rest_verdict(create) is None  # the one left
+    assert rest_verdict(create) == 429
+    assert abuse.create_retry_after() == str(int(abuse.WINDOW_SECONDS))
+
+
+def test_batch_create_is_only_on_the_rest_limit() -> None:
+    batch = scope("/api/v1/rooms/batch-create", "POST")
+    limit = abuse.ROUTE_LIMITS[abuse.CREATE_ROUTE]
+    assert [rest_verdict(batch) for _ in range(limit + 1)] == [None] * (limit + 1)
+    assert rest_verdict(scope("/api/v1/rooms/create", "POST")) is None
+
+
 # --- client_ip -------------------------------------------------------------------
 
 

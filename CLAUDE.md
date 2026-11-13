@@ -64,7 +64,9 @@ message at startup and every signed-in user is rejected.
 - Abuse limits (spec `00-security.md` §0.6) are constants in `app/core/abuse.py`, enforced at three
   choke points only: `AbuseMiddleware` (REST, `app/main.py`), `@guarded` (socket events) and the
   handshake (`connection.py`, open sockets). A new costly public route goes in `ROUTE_LIMITS`; never
-  add a per-handler check. Take the client IP only from `abuse.client_ip` (`CF-Connecting-IP`, else
+  add a per-handler check. The one exception: `POST /rooms/batch-create` charges the `POST
+  /rooms/create` budget one hit per room itself (`abuse.allow_room_creates`, `RateLimiter.allow(key,
+  cost)`, all or nothing), after its config passed, so it is deliberately absent from `ROUTE_LIMITS`. Take the client IP only from `abuse.client_ip` (`CF-Connecting-IP`, else
   rightmost `X-Forwarded-For`, else the peer). The first request from each IP source logs
   `client ip source: …` (never the IP), so the deployment's header can be checked in Render's logs. Async code verifies tokens with
   `await deps.verify_id_token(...)`. CPU-bound routes (`POST /config/validate`, `POST
@@ -94,6 +96,14 @@ message at startup and every signed-in user is rejected.
   none). `validate_config` takes the host config and returns `host_config`; it skips the
   break-even warning while the failure chance or loss share is hidden. `game_finished`,
   the results and the stored `game_configs.config` carry the full config.
+- **Several games at once** (spec 11.3, 13.4): `POST /rooms/batch-create` makes 2-10 rooms with one
+  config (`room_service.new_room_config`, the merge and validation of a config save; a bad one is
+  the save's 400 and makes nothing), checks `StateService.has_room_for` first and deletes what it
+  made if `RoomLimitReached` still hits partway. `POST /rooms/summary` is the dashboard's read-only
+  poll (`room_service.room_summary`): `can_start` is `room_service.can_start`, the rule
+  `start_game` checks, and a wrong secret answers like a missing room. The dashboard starts rooms
+  with the ordinary `start_game`, which checks only the secret, never the sid
+  (`tests/test_sockets/test_start_from_dashboard.py`).
 - **Limits are served, not copied**: the frontend reads `limits` from `GET
   /config/defaults` (`config_schema()`) and each field's bounds from its `fields`; a new
   limit a form needs goes in `LIMITS` (`app/core/limits.py`), never in the frontend.

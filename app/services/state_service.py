@@ -114,6 +114,15 @@ class StateService:
             return self._lobby_ttl
         return self._ttl
 
+    def has_room_for(self, count: int) -> bool:
+        """Whether ``count`` more rooms fit under ``MAX_LIVE_ROOMS`` now (process memory
+        only; Redis has no cap). ``POST /rooms/batch-create`` asks before it makes any,
+        so a batch that cannot fit is refused whole."""
+        backend = self._backend
+        if not isinstance(backend, state_backend.InMemoryBackend):
+            return True
+        return backend.count_live() + count <= MAX_LIVE_ROOMS
+
     async def create_room(self, config: dict, host_display_name: str) -> dict:
         """A new room under a code no live room holds. The write is set-if-absent, so
         two creations that draw the same code at once cannot both take it. In process
