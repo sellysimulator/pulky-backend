@@ -24,21 +24,34 @@ def _names_another_room(sid: str, data: dict | None) -> bool:
     return named not in (sockets.sid_to_host_room.get(sid), seat[0] if seat else None)
 
 
-async def _emit_error(sid: str, event: str, code: str, message: str) -> None:
+def requested_room(data: dict | None) -> str:
+    """The room code an event names (``room_id``), as the handlers read it."""
+    return str((data or {}).get("room_id") or "").strip().upper()
+
+
+async def _emit_error(
+    sid: str, event: str, code: str, message: str, room_code: str | None = None
+) -> None:
     payload: dict[str, Any] = {"message": message}
     if event == "error":
         payload = {"code": code, **payload}
+    if room_code is not None:
+        payload["room_code"] = room_code
     try:
         await get_socket_manager().emit_to_sid(sid, event, payload)
     except Exception:
         logger.exception("Could not deliver the error to the client")
 
 
-def guarded(event: str = "error") -> Callable[[Handler], Handler]:
+def guarded(
+    event: str = "error", *, echo_room_code: bool = False
+) -> Callable[[Handler], Handler]:
     """Wrap a handler (first argument: the calling sid).
 
     On any exception it logs the traceback and emits a generic error to that sid.
     ``error`` carries ``{code, message}``; any other event carries ``{message}``.
+    With ``echo_room_code`` the refusal also carries ``room_code``, the room the event
+    named (``start_game``: the dashboard puts it on that game's card, spec 11.3).
     A payload that is not an object reaches the handler as ``None``. An event over
     the abuse limits (spec 0.6) never reaches the handler: the sid gets
     ``RATE_LIMITED`` the same way.
@@ -48,9 +61,13 @@ def guarded(event: str = "error") -> Callable[[Handler], Handler]:
         @functools.wraps(handler)
         async def wrapper(sid: str, *args: Any, **kwargs: Any) -> Any:
             args = tuple(a if isinstance(a, dict) else None for a in args)
-            lookup = _names_another_room(sid, args[0] if args else None)
+            data = args[0] if args else None
+            room_code = requested_room(data) if echo_room_code else None
+            lookup = _names_another_room(sid, data)
             if not abuse.allow_event(sid, lookup=lookup):
-                await _emit_error(sid, event, "RATE_LIMITED", abuse.TOO_MANY_REQUESTS)
+                await _emit_error(
+                    sid, event, "RATE_LIMITED", abuse.TOO_MANY_REQUESTS, room_code
+                )
                 return None
             try:
                 return await handler(sid, *args, **kwargs)
@@ -58,7 +75,9 @@ def guarded(event: str = "error") -> Callable[[Handler], Handler]:
                 logger.exception(
                     "Unhandled error in socket handler %s", handler.__name__
                 )
-                await _emit_error(sid, event, "SERVER_ERROR", SERVER_ERROR_MESSAGE)
+                await _emit_error(
+                    sid, event, "SERVER_ERROR", SERVER_ERROR_MESSAGE, room_code
+                )
                 return None
 
         return wrapper

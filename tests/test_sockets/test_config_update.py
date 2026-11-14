@@ -252,7 +252,10 @@ async def test_lobby_handler_failures_become_join_error(
     start = world.mark()
     await handlers[name]("a", {"room_id": code, "host_secret": "x"})
 
-    assert world.sent("a", since=start) == [{"message": SERVER_ERROR_MESSAGE}]
+    expected: dict = {"message": SERVER_ERROR_MESSAGE}
+    if name == "start_game":  # a start refusal names its room (spec 12.2)
+        expected["room_code"] = code
+    assert world.sent("a", since=start) == [expected]
     assert world.sent(code, since=start) == []
     assert "boom" not in str(world.sm.records[start:])
 

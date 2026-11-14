@@ -213,7 +213,7 @@ async def test_blocked_start_repeats_the_lobby_update_reason(world: World) -> No
     await start_game("host-1", data_of(code, secret))
 
     sent = world.sent("host-1", since=start)
-    assert sent == [{"message": lobby["start_blocked_reason"]}]
+    assert sent == [{"message": lobby["start_blocked_reason"], "room_code": code}]
     assert sent[0]["message"] == START_NEED_PLAYERS
     assert await world.room(code) == before
     assert world.sent(code, since=start) == []
@@ -227,7 +227,8 @@ async def test_blocked_start_with_nobody_seated(world: World) -> None:
     lobby = [d for e, d in world.reaching("host-1", code) if e == "lobby_update"][-1]
     await start_game("host-1", data_of(code, secret))
     assert world.last("host-1", "join_error") == {
-        "message": lobby["start_blocked_reason"]
+        "message": lobby["start_blocked_reason"],
+        "room_code": code,
     }
     assert (await world.room(code))["state"] == "lobby"
 
@@ -247,7 +248,9 @@ async def test_the_second_player_unblocks_the_start(world: World) -> None:
 async def test_missing_room_is_not_found(world: World) -> None:
     await world.connect("host-1", 900)
     await start_game("host-1", data_of("NOPE99", "x"))
-    assert world.sent("host-1") == [{"message": STATUS_NOT_FOUND}]
+    assert world.sent("host-1") == [
+        {"message": STATUS_NOT_FOUND, "room_code": "NOPE99"}
+    ]
 
 
 @aio
@@ -256,7 +259,9 @@ async def test_wrong_secret_is_refused(world: World) -> None:
     before = copy.deepcopy(await world.room(code))
     start = world.mark()
     await start_game("host-1", data_of(code, "guess"))
-    assert world.sent("host-1", since=start) == [{"message": ONLY_HOST}]
+    assert world.sent("host-1", since=start) == [
+        {"message": ONLY_HOST, "room_code": code}
+    ]
     assert await world.room(code) == before
     assert world.sent(code, since=start) == []
 
@@ -274,7 +279,10 @@ async def test_blank_secret_is_refused_even_for_a_blank_stored_secret(
     start = world.mark()
     await start_game("host-1", {"room_id": code})
     await start_game("host-1", data_of(code, ""))
-    assert world.sent("host-1", "join_error", start) == [{"message": ONLY_HOST}] * 2
+    assert (
+        world.sent("host-1", "join_error", start)
+        == [{"message": ONLY_HOST, "room_code": code}] * 2
+    )
     assert (await world.room(code))["state"] == "lobby"
 
 
@@ -284,7 +292,9 @@ async def test_host_identity_alone_cannot_start(world: World) -> None:
     await world.claim_host(code, "host-2", 900, with_secret=False)
     start = world.mark()
     await start_game("host-2", {"room_id": code})
-    assert world.sent("host-2", since=start) == [{"message": ONLY_HOST}]
+    assert world.sent("host-2", since=start) == [
+        {"message": ONLY_HOST, "room_code": code}
+    ]
     assert (await world.room(code))["state"] == "lobby"
 
 

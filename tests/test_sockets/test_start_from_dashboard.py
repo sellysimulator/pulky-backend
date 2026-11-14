@@ -7,6 +7,8 @@ the host's state."""
 
 import pytest
 
+from app.core import abuse
+from app.services.room_service import STATUS_NOT_FOUND
 from app.sockets.handlers.lobby import join_waiting, start_game
 from tests.test_sockets.conftest import World
 
@@ -59,5 +61,29 @@ async def test_a_wrong_secret_starts_nothing(world: World) -> None:
     await start_game(DASHBOARD, {"room_id": code, "host_secret": "wrong"})
     assert (await world.room(code))["state"] == "lobby"
     assert world.last(DASHBOARD, "join_error") == {
-        "message": "Only the host can do that."
+        "message": "Only the host can do that.",
+        "room_code": code,
     }
+
+
+async def test_every_start_refusal_names_its_room_for_the_dashboard_card(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spec 11.3: each refusal of ``start_game`` carries ``room_code`` next to
+    ``message``, so "Start all" can put it on that game's card. Additive: other
+    ``join_error`` senders are unchanged."""
+    code, secret = await seated_room(world, host_open=False)
+    await start_game(DASHBOARD, {"room_id": "nope99", "host_secret": secret})
+    assert world.last(DASHBOARD, "join_error") == {
+        "message": STATUS_NOT_FOUND,
+        "room_code": "NOPE99",
+    }
+    await start_game(DASHBOARD, {"room_id": code.lower(), "host_secret": "x"})
+    assert world.last(DASHBOARD, "join_error")["room_code"] == code
+    monkeypatch.setattr(abuse, "allow_event", lambda sid, lookup: False)
+    await start_game(DASHBOARD, {"room_id": code, "host_secret": secret})
+    assert world.last(DASHBOARD, "join_error") == {
+        "message": abuse.TOO_MANY_REQUESTS,
+        "room_code": code,
+    }
+    assert (await world.room(code))["state"] == "lobby"
