@@ -22,7 +22,9 @@ EXPORT_ROUTE = "GET /api/v1/games/id/{public_id}/export"
 # is deliberately absent: it charges the create limit one hit per room it makes
 # (`allow_room_creates`), so the middleware leaves it on REST_PER_IP alone.
 ROUTE_LIMITS: dict[str, int] = {
-    CREATE_ROUTE: 10,
+    # Rooms made, per IP per hour: the standard of every Novus game. A batch of up to
+    # MAX_BATCH_ROOMS (10) charges one per room (`allow_room_creates`).
+    CREATE_ROUTE: 30,
     "POST /api/v1/config/validate": 300,
     "POST /api/v1/config/preview": 300,
     # Anyone who can open a game's results may download its data (spec 13.4): this,
@@ -32,7 +34,7 @@ ROUTE_LIMITS: dict[str, int] = {
 }
 # A route limit counts over WINDOW_SECONDS unless it names its own window here; a
 # refusal's Retry-After is the window of the limiter that refused.
-ROUTE_WINDOWS: dict[str, float] = {EXPORT_ROUTE: 3600.0}
+ROUTE_WINDOWS: dict[str, float] = {CREATE_ROUTE: 3600.0, EXPORT_ROUTE: 3600.0}
 ROOM_LOOKUP_ROUTES: frozenset[str] = frozenset(
     {
         "GET /api/v1/rooms/{code}/status",

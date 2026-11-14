@@ -92,7 +92,7 @@ def test_allow_room_creates_charges_the_create_route_budget() -> None:
     assert not abuse.allow_room_creates(create, 2)
     assert rest_verdict(create) is None  # the one left
     assert rest_verdict(create) == 429
-    assert abuse.create_retry_after() == str(int(abuse.WINDOW_SECONDS))
+    assert abuse.create_retry_after() == "3600"
 
 
 def test_batch_create_is_only_on_the_rest_limit() -> None:
@@ -122,9 +122,11 @@ def test_client_ip_falls_back_to_the_peer_then_unknown() -> None:
 # --- rest_verdict ----------------------------------------------------------------
 
 
-def test_create_is_limited_per_ip() -> None:
+def test_create_is_limited_per_ip_to_30_an_hour() -> None:
     create = scope("/api/v1/rooms/create", "POST")
     limit = abuse.ROUTE_LIMITS["POST /api/v1/rooms/create"]
+    assert limit == 30  # the standard of every Novus game
+    assert abuse.route_limiters[abuse.CREATE_ROUTE].window == 3600
     assert [rest_verdict(create) for _ in range(limit)] == [None] * limit
     assert rest_verdict(create) == 429
     other = scope("/api/v1/rooms/create", "POST", client=("9.9.9.9", 1))
@@ -257,7 +259,7 @@ def test_app_answers_429_with_detail_retry_after_and_cors(
     refused = client.post("/api/v1/rooms/create", headers=origin)
     assert refused.status_code == 429
     assert refused.json() == {"detail": abuse.TOO_MANY_REQUESTS}
-    assert refused.headers["retry-after"] == "60"
+    assert refused.headers["retry-after"] == "3600"  # the create window is an hour
     assert refused.headers["access-control-allow-origin"] == origin["Origin"]
 
 

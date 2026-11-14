@@ -187,8 +187,10 @@ def test_the_middleware_leaves_batch_create_on_the_rest_limit(
 ) -> None:
     """Only the route charges the create budget; a batch is not also one create."""
     limit = abuse.ROUTE_LIMITS[abuse.CREATE_ROUTE]
+    assert limit == 30 == 3 * MAX_BATCH_ROOMS
     assert "POST /api/v1/rooms/batch-create" not in abuse.ROUTE_LIMITS
-    assert batch(client, count=limit).status_code == 200
+    for _ in range(limit // MAX_BATCH_ROOMS):  # three batches of 10: 30 rooms
+        assert batch(client, count=MAX_BATCH_ROOMS).status_code == 200
     assert batch(client, count=2).status_code == 429
 
 
