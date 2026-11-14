@@ -63,7 +63,8 @@ message at startup and every signed-in user is rejected.
 - Never log secrets, tokens, identities or payloads.
 - Abuse limits (spec `00-security.md` §0.6) are constants in `app/core/abuse.py`, enforced at three
   choke points only: `AbuseMiddleware` (REST, `app/main.py`), `@guarded` (socket events) and the
-  handshake (`connection.py`, open sockets). A new costly public route goes in `ROUTE_LIMITS` (`_route` turns `/rooms/{code}/…` and
+  handshake (`connection.py`, open sockets). Room creation is 30 per IP per hour (`CREATE_ROUTE`, the Novus standard; a batch of up to 10
+  counts each room). A new costly public route goes in `ROUTE_LIMITS` (`_route` turns `/rooms/{code}/…` and
   `/games/id/{public_id}/…` into templates; a window other than a minute goes in `ROUTE_WINDOWS`); never
   add a per-handler check. The one exception: `POST /rooms/batch-create` charges the `POST
   /rooms/create` budget one hit per room itself (`abuse.allow_room_creates`, `RateLimiter.allow(key,
@@ -81,7 +82,11 @@ message at startup and every signed-in user is rejected.
   results route, with no host secret or bearer (a guest host has no account to fall back on once
   the room is gone). It may carry only what the results already show: never a uid, email, user
   id, guest identity, session token or host secret (`tests/test_api/test_export.py`, the
-  `test_privacy_*` tests, run without MySQL). Its guard is the per-IP `ROUTE_LIMITS` entry
+  `test_privacy_*` tests, run without MySQL). It names every pulquería by its alias, `P<N>` by
+  seat, with no display name (`host_display_name` included); the screens keep the names. Built
+  files sit in `export_service`'s LRU (64 files, keyed by `(public_id, format)`, in process
+  memory: per instance, empty after a restart, never expiring since a finished game never
+  changes); a cached request reads no database but still counts against the limit. Its guard is the per-IP `ROUTE_LIMITS` entry
   `abuse.EXPORT_ROUTE`: 100 an hour, both formats together, over its own `ROUTE_WINDOWS` window,
   answered 429 with `Retry-After: 3600`. The frontend's once-per-session buttons are UX only.
 - End-of-game stats (spec `08-money.md` section 8.6) come from one builder, `app/core/stats.py`
@@ -106,7 +111,10 @@ message at startup and every signed-in user is rejected.
   poll (`room_service.room_summary`): `can_start` is `room_service.can_start`, the rule
   `start_game` checks, and a wrong secret answers like a missing room. The dashboard starts rooms
   with the ordinary `start_game`, which checks only the secret, never the sid
-  (`tests/test_sockets/test_start_from_dashboard.py`).
+  (`tests/test_sockets/test_start_from_dashboard.py`). Every refusal of `start_game`, the
+  `@guarded` fallbacks included (`guarded("join_error", echo_room_code=True)`), is
+  `join_error {message, room_code}` (spec 12.2), so the dashboard puts it on that game's card;
+  keep the field on any new refusal there.
 - **Limits are served, not copied**: the frontend reads `limits` from `GET
   /config/defaults` (`config_schema()`) and each field's bounds from its `fields`; a new
   limit a form needs goes in `LIMITS` (`app/core/limits.py`), never in the frontend.
