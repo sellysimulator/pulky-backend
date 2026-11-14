@@ -131,6 +131,22 @@ def test_create_is_limited_per_ip() -> None:
     assert rest_verdict(other) is None
 
 
+def test_export_is_limited_per_ip_per_hour_across_games_and_formats() -> None:
+    limit = abuse.ROUTE_LIMITS[abuse.EXPORT_ROUTE]
+    assert limit == 100  # a classroom shares one IP: never lower
+    assert abuse.route_limiters[abuse.EXPORT_ROUTE].window == 3600
+    paths = [
+        f"/api/v1/games/id/{i:032x}/export"  # the query string is not in the path
+        for i in range(limit)
+    ]
+    assert [rest_verdict(scope(p)) for p in paths] == [None] * limit
+    assert rest_verdict(scope(f"/api/v1/games/id/{'f' * 32}/export")) == 429
+    # the results route and another IP are not charged by it
+    assert rest_verdict(scope(f"/api/v1/games/id/{'f' * 32}/results")) is None
+    other = scope(f"/api/v1/games/id/{'f' * 32}/export", client=("9.9.9.9", 1))
+    assert rest_verdict(other) is None
+
+
 def test_room_routes_share_one_lookup_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(abuse.lookup_limiter, "limit", 2)
     assert rest_verdict(scope("/api/v1/rooms/ABC234/status")) is None

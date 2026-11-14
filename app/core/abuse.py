@@ -17,6 +17,7 @@ WINDOW_SECONDS = 60.0
 REST_PER_IP = 600  # every REST request, per IP
 ROOM_LOOKUPS_PER_IP = 120  # requests that name a room code the caller is not in
 CREATE_ROUTE = "POST /api/v1/rooms/create"
+EXPORT_ROUTE = "GET /api/v1/games/id/{public_id}/export"
 # Costly public routes, per IP, on top of REST_PER_IP. POST /api/v1/rooms/batch-create
 # is deliberately absent: it charges the create limit one hit per room it makes
 # (`allow_room_creates`), so the middleware leaves it on REST_PER_IP alone.
@@ -24,7 +25,14 @@ ROUTE_LIMITS: dict[str, int] = {
     CREATE_ROUTE: 10,
     "POST /api/v1/config/validate": 300,
     "POST /api/v1/config/preview": 300,
+    # Anyone who can open a game's results may download its data (spec 13.4): this,
+    # not the results page's once-per-session buttons, is what guards the compute.
+    # Both formats share it. A classroom shares one IP, so not lower than 100 an hour.
+    EXPORT_ROUTE: 100,
 }
+# A route limit counts over WINDOW_SECONDS unless it names its own window here; a
+# refusal's Retry-After is the window of the limiter that refused.
+ROUTE_WINDOWS: dict[str, float] = {EXPORT_ROUTE: 3600.0}
 ROOM_LOOKUP_ROUTES: frozenset[str] = frozenset(
     {
         "GET /api/v1/rooms/{code}/status",
@@ -112,7 +120,8 @@ class RateLimiter:
 rest_limiter = RateLimiter(REST_PER_IP)
 lookup_limiter = RateLimiter(ROOM_LOOKUPS_PER_IP)
 route_limiters: dict[str, RateLimiter] = {
-    route: RateLimiter(limit) for route, limit in ROUTE_LIMITS.items()
+    route: RateLimiter(limit, ROUTE_WINDOWS.get(route, WINDOW_SECONDS))
+    for route, limit in ROUTE_LIMITS.items()
 }
 sid_event_limiter = RateLimiter(EVENTS_PER_SID)
 ip_event_limiter = RateLimiter(EVENTS_PER_IP)
@@ -156,9 +165,13 @@ def client_ip(scope: Mapping[str, Any]) -> str:
 
 
 def _route(method: str, path: str) -> str:
+    """The route template a path matches: ``/rooms/{code}/...`` and
+    ``/games/id/{public_id}/...`` stand for every code and id."""
     parts = path.split("/")
     if len(parts) == 6 and parts[1:4] == ["api", "v1", "rooms"]:
         parts[4] = "{code}"
+    elif len(parts) == 7 and parts[1:5] == ["api", "v1", "games", "id"]:
+        parts[5] = "{public_id}"
     return f"{method} {'/'.join(parts)}"
 
 
@@ -169,23 +182,30 @@ def _too_large(scope: Mapping[str, Any]) -> bool:
     return False
 
 
-def rest_verdict(scope: Mapping[str, Any]) -> int | None:
-    """``None`` to let a REST request through, else the status that refuses it."""
+def _verdict(scope: Mapping[str, Any]) -> tuple[int, float] | None:
+    """``None`` to let a REST request through, else the refusing status and the
+    window of the limiter that refused (the 429's Retry-After)."""
     path = str(scope.get("path", ""))
     if path in UNLIMITED_PATHS:
         return None
     if _too_large(scope):
-        return 413
+        return 413, 0.0
     ip = client_ip(scope)
     if not rest_limiter.allow(ip):
-        return 429
+        return 429, rest_limiter.window
     route = _route(str(scope.get("method", "")), path)
     limiter = (
         lookup_limiter if route in ROOM_LOOKUP_ROUTES else route_limiters.get(route)
     )
     if limiter is not None and not limiter.allow(ip):
-        return 429
+        return 429, limiter.window
     return None
+
+
+def rest_verdict(scope: Mapping[str, Any]) -> int | None:
+    """``None`` to let a REST request through, else the status that refuses it."""
+    verdict = _verdict(scope)
+    return None if verdict is None else verdict[0]
 
 
 def allow_room_creates(scope: Mapping[str, Any], count: int) -> bool:
@@ -225,7 +245,7 @@ async def _read_body(receive: Receive) -> tuple[list[Message], bool]:
 
 
 class AbuseMiddleware:
-    """Pure ASGI: ``rest_verdict`` in front of every HTTP request to the REST app."""
+    """Pure ASGI: ``_verdict`` (``rest_verdict``) in front of every REST request."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -234,8 +254,9 @@ class AbuseMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        status = rest_verdict(scope)
-        if status is None:
+        verdict = _verdict(scope)
+        retry_after = WINDOW_SECONDS
+        if verdict is None:
             messages, too_large = await _read_body(receive)
             if not too_large:
 
@@ -245,6 +266,8 @@ class AbuseMiddleware:
                 await self.app(scope, replay, send)
                 return
             status = 413
+        else:
+            status, retry_after = verdict
         detail = TOO_MANY_REQUESTS if status == 429 else TOO_LARGE
         body = json.dumps({"detail": detail}).encode()
         headers = [
@@ -252,7 +275,7 @@ class AbuseMiddleware:
             (b"content-length", str(len(body)).encode()),
         ]
         if status == 429:
-            headers.append((b"retry-after", str(int(WINDOW_SECONDS)).encode()))
+            headers.append((b"retry-after", str(int(retry_after)).encode()))
         await send(
             {"type": "http.response.start", "status": status, "headers": headers}
         )

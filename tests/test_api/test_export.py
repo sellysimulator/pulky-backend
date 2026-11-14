@@ -4,21 +4,28 @@
 import csv
 import io
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.core import abuse
 from app.core.engine import PulkyEngine
+from app.services import db_service
+from app.services.db_service import StoredGame
 from app.services.export_service import csv_safe, export_csv, export_json
+from app.services.results_service import results_response
+from app.services.state_service import reset_state_service
+from tests.conftest import contains_key
 from tests.fixtures.mysql import db_session, mysql_url  # noqa: F401
 from tests.test_api.test_results import (  # noqa: F401
-    HOST_SECRET,
     api,
     assert_no_secrets,
-    claims_for,
+    bare_api,
     db_engine,
     drop_live_room,
     factory,
@@ -34,7 +41,6 @@ from tests.test_api.test_results import (  # noqa: F401
     stored,
 )
 
-HOST_FORBIDDEN = {"detail": "Only the host who created this room can export it."}
 NOT_FOUND = {"detail": "Results not found."}
 COMPACT = (",", ":")
 INJECTORS = [
@@ -274,10 +280,8 @@ def test_fm1_formula_injection_in_a_pulqueria_name(
     assert names["P7"] == "Don Agave"
     for row in parse_csv(text):
         assert row["display_name"][:1] not in ("=", "+", "-", "@", "\t", "\r")
-    # and through the route, as the host of the live room
-    room = make_room(eng, code="XNJ777")
-    put_live_room(live_room_for(gid, room, secret="live-secret-INJ"))
-    res = api.get(url(gid), headers={"X-Host-Secret": "live-secret-INJ"})
+    # and through the route, which anyone may call
+    res = api.get(url(gid))
     assert res.status_code == 200
     assert {r["alias"]: r["display_name"] for r in parse_csv(res.text)} == names
 
@@ -290,18 +294,19 @@ def url(public_id: str, fmt: str = "csv") -> str:
 
 
 @pytest.mark.dbschema
-def test_valid_secret_of_the_live_room_exports_both_formats(
-    api: TestClient, game: dict[str, Any], engine: PulkyEngine
+def test_anyone_exports_both_formats_with_no_secret_and_no_sign_in(
+    api: TestClient, game: dict[str, Any]
 ) -> None:
-    put_live_room(live_room_for(game["id"], game["room"], secret="live-secret-A"))
-    headers = {"X-Host-Secret": "live-secret-A"}
-    res = api.get(url(game["id"]), headers=headers)
+    """Open by public id, like the results: a guest host has no account to fall back
+    on once the room is gone, so nothing binds the export to the host."""
+    drop_live_room(game["code"])
+    res = api.get(url(game["id"]))
     assert res.status_code == 200
     disposition = res.headers["content-disposition"]
     assert disposition.startswith("attachment")
     assert f"pulky-{game['code']}-{game['id'][:8]}.csv" in disposition
     assert len(parse_csv(res.text)) == 14
-    res = api.get(url(game["id"], "json"), headers=headers)
+    res = api.get(url(game["id"], "json"))
     assert res.status_code == 200
     assert res.headers["content-disposition"].startswith("attachment")
     assert f"pulky-{game['code']}-{game['id'][:8]}.json" in (
@@ -312,122 +317,44 @@ def test_valid_secret_of_the_live_room_exports_both_formats(
 
 
 @pytest.mark.dbschema
-def test_wrong_secret_and_missing_header_are_403_with_the_summary_copy(
-    api: TestClient, game: dict[str, Any]
-) -> None:
-    put_live_room(live_room_for(game["id"], game["room"], secret="live-secret-A"))
-    wrong = api.get(url(game["id"]), headers={"X-Host-Secret": "wrong"})
-    assert wrong.status_code == 403 and wrong.json() == HOST_FORBIDDEN
-    missing = api.get(url(game["id"]))
-    assert missing.status_code == 403 and missing.json() == HOST_FORBIDDEN
-
-
-@pytest.mark.dbschema
-def test_host_bearer_exports_with_a_live_room_and_after_the_room_expired(
-    api: TestClient, game: dict[str, Any], firebase_tokens: dict[str, Any]
-) -> None:
-    bearer = sign_in(firebase_tokens, "uid-host-1")
-    # the room is still live, and the bearer carries no secret
-    put_live_room(live_room_for(game["id"], game["room"], secret="live-secret-A"))
-    assert api.get(url(game["id"]), headers=bearer).status_code == 200
-    # the room has expired (24 h): the host's account still exports
-    drop_live_room(game["code"])
-    res = api.get(url(game["id"], "json"), headers=bearer)
-    assert res.status_code == 200
-    assert len(res.json()["player_days"]) == 14
-
-
-@pytest.mark.dbschema
-def test_other_bearer_and_guest_hosted_game_are_403(
+def test_any_header_or_bearer_is_ignored(
     api: TestClient,
     factory: Callable[[], Session],
     game: dict[str, Any],
     firebase_tokens: dict[str, Any],
     engine: PulkyEngine,
 ) -> None:
-    other = sign_in(firebase_tokens, "uid-someone-else")
-    res = api.get(url(game["id"]), headers=other)
-    assert res.status_code == 403 and res.json() == HOST_FORBIDDEN
-    # a game whose host was a guest has no host user: no bearer exports it
-    guest_hosted = make_room(
-        engine,
-        code="GST234",
-        started_at="2026-10-14T09:00:00Z",
-        finished_at="2026-10-14T10:00:00Z",
-    )
-    guest_game = persist(guest_hosted, factory)
-    res = api.get(url(guest_game), headers=sign_in(firebase_tokens, "uid-host-1"))
-    assert res.status_code == 403 and res.json() == HOST_FORBIDDEN
-
-
-@pytest.mark.dbschema
-def test_fm6_the_secret_of_a_different_live_room_does_not_export(
-    api: TestClient,
-    game: dict[str, Any],
-    factory: Callable[[], Session],
-    engine: PulkyEngine,
-) -> None:
-    # another live room, with its own valid secret, for a different game
-    elsewhere = persist(
+    put_live_room(live_room_for(game["id"], game["room"], secret="live-secret-A"))
+    plain = api.get(url(game["id"])).text
+    for headers in (
+        {"X-Host-Secret": "wrong"},
+        {"X-Host-Secret": "live-secret-A"},
+        sign_in(firebase_tokens, "uid-someone-else"),
+        {"Authorization": "Bearer not-a-valid-token"},
+    ):
+        res = api.get(url(game["id"]), headers=headers)
+        assert res.status_code == 200 and res.text == plain
+    # a game whose host was a guest exports like any other
+    guest_hosted = persist(
         make_room(
             engine,
-            code="QTH222",
+            code="GST234",
             started_at="2026-10-14T09:00:00Z",
             finished_at="2026-10-14T10:00:00Z",
         ),
         factory,
     )
-    put_live_room(
-        live_room_for(elsewhere, game["room"], secret="secret-of-OTH222", code="QTH222")
-    )
-    res = api.get(url(game["id"]), headers={"X-Host-Secret": "secret-of-OTH222"})
-    assert res.status_code == 403 and res.json() == HOST_FORBIDDEN
-    # sanity: that secret does export its own game
-    own = api.get(url(elsewhere), headers={"X-Host-Secret": "secret-of-OTH222"})
-    assert own.status_code == 200
-
-
-@pytest.mark.dbschema
-def test_fm6_a_reused_code_live_room_for_another_game_does_not_export_this_one(
-    api: TestClient,
-    game: dict[str, Any],
-    factory: Callable[[], Session],
-    engine: PulkyEngine,
-) -> None:
-    """Same room code, valid secret, but the live room is a *different* game."""
-    newer = persist(
-        make_room(
-            engine,
-            started_at="2026-10-14T09:00:00Z",
-            finished_at="2026-10-14T10:00:00Z",
-        ),
-        factory,
-    )
-    assert newer != game["id"]
-    put_live_room(live_room_for(newer, game["room"], secret="live-secret-NEW"))
-    # the export route is keyed by game id: the live room's secret exports its own
-    # game, never the earlier game that used the same code
-    ok = api.get(url(newer), headers={"X-Host-Secret": "live-secret-NEW"})
-    assert ok.status_code == 200
-    assert f"-{newer[:8]}." in ok.headers["content-disposition"]
-    old = api.get(url(game["id"]), headers={"X-Host-Secret": "live-secret-NEW"})
-    assert old.status_code == 403 and old.json() == HOST_FORBIDDEN
-    # a live room whose game_id is neither: valid secret, still refused
-    put_live_room(live_room_for("f" * 32, game["room"], secret="live-secret-NEW"))
-    bad = api.get(url(newer), headers={"X-Host-Secret": "live-secret-NEW"})
-    assert bad.status_code == 403 and bad.json() == HOST_FORBIDDEN
+    assert api.get(url(guest_hosted)).status_code == 200
 
 
 @pytest.mark.dbschema
 def test_unknown_game_id_is_404_and_another_format_is_422(
     api: TestClient, game: dict[str, Any]
 ) -> None:
-    put_live_room(live_room_for(game["id"], game["room"], secret="live-secret-A"))
-    headers = {"X-Host-Secret": "live-secret-A"}
-    missing = api.get(url("0" * 32), headers=headers)
+    missing = api.get(url("0" * 32))
     assert missing.status_code == 404 and missing.json() == NOT_FOUND
-    assert api.get(url(game["id"], "xml"), headers=headers).status_code == 422
-    assert api.get(url(game["id"], "xlsx"), headers=headers).status_code == 422
+    assert api.get(url(game["id"], "xml")).status_code == 422
+    assert api.get(url(game["id"], "xlsx")).status_code == 422
 
 
 @pytest.mark.dbschema
@@ -435,11 +362,160 @@ def test_ac3_exported_files_carry_no_identity(
     api: TestClient, game: dict[str, Any]
 ) -> None:
     put_live_room(live_room_for(game["id"], game["room"], secret="live-secret-A"))
-    headers = {"X-Host-Secret": "live-secret-A"}
     secrets = [*secrets_of(game["room"]), "live-secret-A"]
     for fmt in ("csv", "json"):
-        res = api.get(url(game["id"], fmt), headers=headers)
+        res = api.get(url(game["id"], fmt))
         assert res.status_code == 200
         assert_no_secrets(res.text, secrets)
         assert_no_secrets(dict(res.headers), secrets)
-    assert guest_id(1) not in api.get(url(game["id"]), headers=headers).text
+    assert guest_id(1) not in api.get(url(game["id"])).text
+
+
+# --------------------------------------------------- without MySQL
+# The route and the builders on a game held in memory: the open access, the 404,
+# the 429 and the privacy check run in every suite, Docker or not.
+
+UID = "uid-firebase-ana-5150"
+EMAIL = "ana.ruiz.host@example.com"
+USER_ID = 987_654_321
+LIVE_SECRET = "live-host-secret-QQ77"
+FORBIDDEN_KEYS = (
+    "uid",
+    "firebase_uid",
+    "email",
+    "user_id",
+    "identity",
+    "guest_identity",
+    "host_identity",
+    "session_token",
+    "host_secret",
+)
+
+
+def memory_game(engine: PulkyEngine, room: dict[str, Any]) -> StoredGame:
+    """``room``'s game as ``load_stored_game`` returns it, identities included."""
+    identity = {a: p["identity"] for a, p in room["participants"].items()}
+    return StoredGame(
+        game_id=room["game_id"],
+        room_code=room["room_code"],
+        host_display_name=room["host_display_name"],
+        duration_days=engine.config.duration_days,
+        days_played=len(engine.market_history()),
+        ended_early=False,
+        started_at=datetime(2026, 10, 12, 14, tzinfo=UTC),
+        finished_at=datetime(2026, 10, 12, 15, tzinfo=UTC),
+        seed=engine.seed,
+        config=engine.config.to_dict(),
+        records={a: engine.records(a) for a in engine.aliases},
+        market=engine.market_history(),
+        settlements=engine.settlements(),
+        display_names=engine.display_names,
+        user_ids={a: USER_ID if identity[a] == UID else None for a in identity},
+        guest_identities={
+            a: None if identity[a] == UID else identity[a] for a in identity
+        },
+    )
+
+
+@pytest.fixture()
+def held(
+    engine: PulkyEngine,
+    monkeypatch: pytest.MonkeyPatch,
+    memory_backend: Any,
+) -> Iterator[dict[str, Any]]:
+    """A finished game the routes find without MySQL; its room is still live, with
+    a signed-in host (``UID``) who also played as P1 and a guest as P2."""
+    room = make_room(
+        engine,
+        code="MEM234",
+        identities={"P1": UID, "P2": guest_id(77)},
+        host_identity=UID,
+        game_id="c" * 32,
+    )
+    stored_game = memory_game(engine, room)
+    monkeypatch.setattr(
+        db_service,
+        "find_game_by_public_id",
+        lambda db, pid: SimpleNamespace(id=1) if pid == room["game_id"] else None,
+    )
+    monkeypatch.setattr(db_service, "load_stored_game", lambda db, pk: stored_game)
+    reset_state_service()
+    put_live_room(live_room_for(room["game_id"], room, secret=LIVE_SECRET))
+    yield {"id": room["game_id"], "room": room, "stored": stored_game}
+    reset_state_service()
+
+
+def forbidden_values(room: dict[str, Any]) -> list[str]:
+    return [*secrets_of(room), LIVE_SECRET, UID, EMAIL, str(USER_ID), guest_id(77)]
+
+
+def test_privacy_the_builders_carry_only_what_the_results_show(
+    held: dict[str, Any],
+) -> None:
+    text = export_csv(held["stored"])
+    data = export_json(held["stored"])
+    blob = json.dumps(data)
+    for value in forbidden_values(held["room"]):
+        assert value not in text, value
+        assert value not in blob, value
+    header = next(csv.reader(io.StringIO(text, newline="")))
+    for key in FORBIDDEN_KEYS:
+        assert not contains_key(data, key), key
+        assert key not in header, key
+    # every name in the files is one the results screen shows
+    shown = results_response(held["stored"])
+    assert {p["display_name"] for p in data["participants"]} == {
+        r["display_name"] for r in shown["leaderboard"]
+    }
+    assert data["game"]["config"] == shown["config"]
+    assert data["game"]["host_display_name"] == shown["host_display_name"]
+
+
+def test_privacy_the_route_carries_no_identity_of_the_caller_or_the_room(
+    bare_api: TestClient, held: dict[str, Any], firebase_tokens: dict[str, Any]
+) -> None:
+    bearer = sign_in(firebase_tokens, UID, email=EMAIL)
+    values = forbidden_values(held["room"])
+    for fmt in ("csv", "json"):
+        for headers in ({}, bearer, {"X-Host-Secret": LIVE_SECRET}):
+            res = bare_api.get(url(held["id"], fmt), headers=headers)
+            assert res.status_code == 200
+            for value in values:
+                assert value not in res.text, value
+                assert value not in json.dumps(dict(res.headers)), value
+
+
+def test_the_route_is_open_and_answers_404_for_an_unknown_id(
+    bare_api: TestClient, held: dict[str, Any]
+) -> None:
+    res = bare_api.get(url(held["id"]))
+    assert res.status_code == 200
+    assert res.text == export_csv(held["stored"])
+    assert res.headers["content-disposition"] == (
+        f'attachment; filename="pulky-MEM234-{held["id"][:8]}.csv"'
+    )
+    res = bare_api.get(url(held["id"], "json"))
+    assert res.status_code == 200
+    assert res.json() == norm(export_json(held["stored"]))
+    missing = bare_api.get(url("0" * 32))
+    assert missing.status_code == 404 and missing.json() == NOT_FOUND
+
+
+def test_the_route_answers_429_past_100_an_hour_per_ip_across_formats(
+    bare_api: TestClient, held: dict[str, Any]
+) -> None:
+    origin = {"Origin": "https://pulkysim.web.app"}
+    limit = abuse.ROUTE_LIMITS[abuse.EXPORT_ROUTE]
+    for i in range(limit):
+        fmt = "csv" if i % 2 else "json"
+        assert bare_api.get(url(held["id"], fmt), headers=origin).status_code == 200
+    for fmt in ("csv", "json"):
+        refused = bare_api.get(url(held["id"], fmt), headers=origin)
+        assert refused.status_code == 429
+        assert refused.json() == {"detail": abuse.TOO_MANY_REQUESTS}
+        assert refused.headers["retry-after"] == "3600"
+        assert refused.headers["access-control-allow-origin"] == origin["Origin"]
+    # an unknown id is charged too: guessing ids costs the same budget
+    assert bare_api.get(url("0" * 32)).status_code == 429
+    # the results stay open to that IP
+    assert bare_api.get(f"/api/v1/games/id/{held['id']}/results").status_code == 200

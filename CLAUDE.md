@@ -63,7 +63,8 @@ message at startup and every signed-in user is rejected.
 - Never log secrets, tokens, identities or payloads.
 - Abuse limits (spec `00-security.md` §0.6) are constants in `app/core/abuse.py`, enforced at three
   choke points only: `AbuseMiddleware` (REST, `app/main.py`), `@guarded` (socket events) and the
-  handshake (`connection.py`, open sockets). A new costly public route goes in `ROUTE_LIMITS`; never
+  handshake (`connection.py`, open sockets). A new costly public route goes in `ROUTE_LIMITS` (`_route` turns `/rooms/{code}/…` and
+  `/games/id/{public_id}/…` into templates; a window other than a minute goes in `ROUTE_WINDOWS`); never
   add a per-handler check. The one exception: `POST /rooms/batch-create` charges the `POST
   /rooms/create` budget one hit per room itself (`abuse.allow_room_creates`, `RateLimiter.allow(key,
   cost)`, all or nothing), after its config passed, so it is deliberately absent from `ROUTE_LIMITS`. Take the client IP only from `abuse.client_ip` (`CF-Connecting-IP`, else
@@ -76,11 +77,13 @@ message at startup and every signed-in user is rejected.
 
 - The wire events and error codes: spec `12-wire.md`. The frontend consumes them.
 - The REST shapes and error details: spec `13-rest-db.md` section 13.4.
-- **One host rule**: "this account hosted this game" is `user_service.is_game_host`, asked by the
-  export's bearer branch (`_may_export`, `app/api/v1/games.py`) and by `GET
-  /users/me/hosted-games/{public_id}` (204, else 404, never 403), which the results page asks
-  before it offers a signed-in host the export without the host secret. Never compare
-  `host_user_id` anywhere else; `tests/test_api/test_hosted_games.py` checks the two agree.
+- **The export is open** (spec 13.4): `GET /games/id/{public_id}/export` answers anyone, like the
+  results route, with no host secret or bearer (a guest host has no account to fall back on once
+  the room is gone). It may carry only what the results already show: never a uid, email, user
+  id, guest identity, session token or host secret (`tests/test_api/test_export.py`, the
+  `test_privacy_*` tests, run without MySQL). Its guard is the per-IP `ROUTE_LIMITS` entry
+  `abuse.EXPORT_ROUTE`: 100 an hour, both formats together, over its own `ROUTE_WINDOWS` window,
+  answered 429 with `Retry-After: 3600`. The frontend's once-per-session buttons are UX only.
 - End-of-game stats (spec `08-money.md` section 8.6) come from one builder, `app/core/stats.py`
   `build_stats`, for both `game_finished` and the results API. Each player's `flow` (the summary's flow
   chart) is built from the day records plus the free initial pipeline, which both callers pass from the
