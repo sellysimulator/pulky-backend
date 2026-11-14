@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core import abuse
 from app.core.engine import PulkyEngine
-from app.services import db_service
+from app.services import db_service, export_service
 from app.services.db_service import StoredGame
 from app.services.export_service import csv_safe, export_csv, export_json
 from app.services.results_service import results_response
@@ -95,7 +95,7 @@ def parse_csv(text: str) -> list[dict[str, str]]:
 
 def expected_columns(engine: PulkyEngine) -> list[str]:
     first = engine.records("P1")[0]
-    return ["game_id", "room_code", "alias", "display_name", *first.to_payload()]
+    return ["game_id", "room_code", "alias", *first.to_payload()]
 
 
 def by_key(rows: list[dict[str, Any]]) -> dict[tuple[str, int], dict[str, Any]]:
@@ -145,7 +145,7 @@ def test_csv_has_one_row_per_player_per_day_in_section_03_order(
     for row in rows:
         assert row["game_id"] == game["id"]
         assert row["room_code"] == game["code"]
-        assert row["display_name"] == engine.display_names[row["alias"]]
+        assert "display_name" not in row
 
 
 @pytest.mark.dbschema
@@ -228,13 +228,11 @@ def test_json_export_structure(
     for p in data["participants"]:
         assert set(p) == {
             "alias",
-            "display_name",
             "final_rank",
             "total_profit",
             "final_settlement",
         }
         row = leaderboard[p["alias"]]
-        assert p["display_name"] == row["display_name"]
         assert p["final_rank"] == row["rank"]
         assert p["total_profit"] == pytest.approx(row["total_profit"], abs=1e-6)
         assert norm(p["final_settlement"]) == norm(settlements[p["alias"]].to_payload())
@@ -264,26 +262,21 @@ def test_ac3_the_builders_carry_no_identity(
 
 
 @pytest.mark.dbschema
-def test_fm1_formula_injection_in_a_pulqueria_name(
+def test_fm1_a_formula_in_a_pulqueria_name_never_reaches_the_file(
     api: TestClient, factory: Callable[[], Session], db_session: Session
 ) -> None:
+    """Names are not exported at all (P<N> only), so no name can inject a formula."""
     eng = play_game(players=7, names=INJECTORS)
     gid = persist(make_room(eng, code="XNJ777"), factory)
-    text, _ = stored_export(db_session, gid)
-    names = {r["alias"]: r["display_name"] for r in parse_csv(text)}
-    assert names["P1"] == '\'=HYPERLINK("x")'
-    assert names["P2"] == "'+cmd|' /C calc'"
-    assert names["P3"] == "'-2+3"
-    assert names["P4"] == "'@chula"
-    assert names["P5"] == "'\tTab"
-    assert names["P6"] == "'\rCarriage"
-    assert names["P7"] == "Don Agave"
-    for row in parse_csv(text):
-        assert row["display_name"][:1] not in ("=", "+", "-", "@", "\t", "\r")
-    # and through the route, which anyone may call
+    text, data = stored_export(db_session, gid)
     res = api.get(url(gid))
-    assert res.status_code == 200
-    assert {r["alias"]: r["display_name"] for r in parse_csv(res.text)} == names
+    assert res.status_code == 200 and res.text == text
+    for name in INJECTORS:
+        assert name not in text and name not in json.dumps(data)
+    rows = parse_csv(text)
+    assert {r["alias"] for r in rows} == {f"P{i}" for i in range(1, 8)}
+    for row in rows:
+        assert all(not cell.startswith(("=", "+", "@")) for cell in row.values())
 
 
 # --------------------------------------------------- access (3.2)
@@ -433,20 +426,36 @@ def held(
         game_id="c" * 32,
     )
     stored_game = memory_game(engine, room)
-    monkeypatch.setattr(
-        db_service,
-        "find_game_by_public_id",
-        lambda db, pid: SimpleNamespace(id=1) if pid == room["game_id"] else None,
-    )
-    monkeypatch.setattr(db_service, "load_stored_game", lambda db, pk: stored_game)
+    reads: list[str] = []
+
+    def find(db: Any, pid: str) -> Any:
+        reads.append(pid)
+        return SimpleNamespace(id=1) if pid == room["game_id"] else None
+
+    def load(db: Any, pk: int) -> StoredGame:
+        reads.append(f"load {pk}")
+        return stored_game
+
+    monkeypatch.setattr(db_service, "find_game_by_public_id", find)
+    monkeypatch.setattr(db_service, "load_stored_game", load)
     reset_state_service()
     put_live_room(live_room_for(room["game_id"], room, secret=LIVE_SECRET))
-    yield {"id": room["game_id"], "room": room, "stored": stored_game}
+    yield {"id": room["game_id"], "room": room, "stored": stored_game, "reads": reads}
     reset_state_service()
 
 
 def forbidden_values(room: dict[str, Any]) -> list[str]:
-    return [*secrets_of(room), LIVE_SECRET, UID, EMAIL, str(USER_ID), guest_id(77)]
+    names = [p["display_name"] for p in room["participants"].values()]
+    return [
+        *secrets_of(room),
+        LIVE_SECRET,
+        UID,
+        EMAIL,
+        str(USER_ID),
+        guest_id(77),
+        *names,
+        room["host_display_name"],
+    ]
 
 
 def test_privacy_the_builders_carry_only_what_the_results_show(
@@ -462,13 +471,16 @@ def test_privacy_the_builders_carry_only_what_the_results_show(
     for key in FORBIDDEN_KEYS:
         assert not contains_key(data, key), key
         assert key not in header, key
-    # every name in the files is one the results screen shows
+    # the files name every pulquería by its alias only, P<N> by seat
     shown = results_response(held["stored"])
-    assert {p["display_name"] for p in data["participants"]} == {
-        r["display_name"] for r in shown["leaderboard"]
+    assert [p["alias"] for p in data["participants"]] == ["P1", "P2"]
+    assert {p["alias"] for p in data["participants"]} == {
+        r["alias"] for r in shown["leaderboard"]
     }
     assert data["game"]["config"] == shown["config"]
-    assert data["game"]["host_display_name"] == shown["host_display_name"]
+    for key in ("display_name", "host_display_name"):
+        assert not contains_key(data, key), key
+        assert key not in header, key
 
 
 def test_privacy_the_route_carries_no_identity_of_the_caller_or_the_room(
@@ -519,3 +531,84 @@ def test_the_route_answers_429_past_100_an_hour_per_ip_across_formats(
     assert bare_api.get(url("0" * 32)).status_code == 429
     # the results stay open to that IP
     assert bare_api.get(f"/api/v1/games/id/{held['id']}/results").status_code == 200
+
+
+DISTINCT_NAMES = ["Zyxwv Quokka 4417", "Mxyzptlk Pulqueria 0042", "=Jabberwock 9"]
+
+
+def test_p_n_anonymization_no_display_name_reaches_either_format(
+    bare_api: TestClient, monkeypatch: pytest.MonkeyPatch, memory_backend: Any
+) -> None:
+    """Players keep their names on screen; the files name them P1, P2, P3 by seat,
+    the same P<N> in every row and in every peer-trade counterparty."""
+    eng = play_game(players=3, names=DISTINCT_NAMES)
+    room = make_room(eng, code="ANN234", host_name="Profesora Xochiquetzal 77")
+    game = memory_game(eng, room)
+    assert set(results_response(game)["stats"]["players"]) == {"P1", "P2", "P3"}
+    monkeypatch.setattr(
+        db_service, "find_game_by_public_id", lambda db, pid: SimpleNamespace(id=1)
+    )
+    monkeypatch.setattr(db_service, "load_stored_game", lambda db, pk: game)
+    hidden = [*DISTINCT_NAMES, "Profesora Xochiquetzal 77", "Zyxwv", "Mxyzptlk"]
+    for fmt in ("csv", "json"):
+        res = bare_api.get(url(room["game_id"], fmt))
+        assert res.status_code == 200
+        for name in hidden:
+            assert name not in res.text, (fmt, name)
+    data = export_json(game)
+    aliases = {"P1", "P2", "P3"}
+    assert {r["alias"] for r in data["player_days"]} == aliases
+    assert {p["alias"] for p in data["participants"]} == aliases
+    counterparties = {
+        t["counterparty"] for r in data["player_days"] for t in r["peer_trades"]
+    }
+    assert counterparties and counterparties <= aliases
+
+
+# --------------------------------------------------- the cache
+
+
+def test_a_second_request_is_served_from_the_cache_with_no_database_read(
+    bare_api: TestClient, held: dict[str, Any]
+) -> None:
+    first = bare_api.get(url(held["id"]))
+    assert first.status_code == 200
+    assert held["reads"] == [held["id"], "load 1"]
+    second = bare_api.get(url(held["id"]))
+    assert second.status_code == 200
+    assert second.content == first.content
+    assert second.headers["content-disposition"] == first.headers["content-disposition"]
+    assert held["reads"] == [held["id"], "load 1"]  # no database read
+    # the other format is its own entry
+    assert bare_api.get(url(held["id"], "json")).status_code == 200
+    assert len(held["reads"]) == 4
+    bare_api.get(url(held["id"], "json"))
+    assert len(held["reads"]) == 4
+
+
+def test_only_a_200_is_cached_and_every_request_still_counts_against_the_limit(
+    bare_api: TestClient, held: dict[str, Any]
+) -> None:
+    unknown = "0" * 32
+    assert bare_api.get(url(unknown)).status_code == 404
+    assert bare_api.get(url(unknown)).status_code == 404
+    assert held["reads"] == [unknown, unknown]  # a 404 is never cached
+    limit = abuse.ROUTE_LIMITS[abuse.EXPORT_ROUTE]
+    for _ in range(limit - 2):
+        assert bare_api.get(url(held["id"])).status_code == 200
+    assert bare_api.get(url(held["id"])).status_code == 429  # cached, still counted
+
+
+def test_the_cache_keeps_the_64_most_recently_used_files(
+    held: dict[str, Any],
+) -> None:
+    size = export_service.CACHE_SIZE
+    assert size == 64
+    file = export_service.build_file(held["stored"], "csv")
+    for i in range(size):
+        export_service.remember_file(f"{i:032x}", "csv", file)
+    assert export_service.cached_file(f"{0:032x}", "csv") is file  # now most recent
+    export_service.remember_file("f" * 32, "csv", file)  # one past the size
+    assert export_service.cached_file(f"{1:032x}", "csv") is None  # least recent went
+    assert export_service.cached_file(f"{0:032x}", "csv") is file
+    assert export_service.cached_file("f" * 32, "csv") is file

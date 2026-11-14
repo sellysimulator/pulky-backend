@@ -1,6 +1,5 @@
 """Results, export and claim routes (spec 13.4, 13.8)."""
 
-import json
 import logging
 from typing import Any, Literal
 
@@ -62,20 +61,18 @@ def export_game(
 ) -> Response:
     """Open to anyone who can open the game's results, like ``results_by_id``: a host
     may be a guest with no account to prove it by once the room is gone. The files
-    carry only what the results show (no uid, email, user id, guest identity, session
-    token or host secret). The per-IP limit in ``app.core.abuse`` (``EXPORT_ROUTE``)
-    guards the compute."""
-    stored = _stored(db, db_service.find_game_by_public_id(db, public_id))
-    name = f"pulky-{stored.room_code}-{stored.game_id[:8]}.{format}"
-    headers = {"Content-Disposition": f'attachment; filename="{name}"'}
-    if format == "csv":
-        return Response(
-            content=export_service.export_csv(stored),
-            media_type="text/csv; charset=utf-8",
-            headers=headers,
-        )
+    carry only what the results show, every pulquería by its alias (no display name,
+    uid, email, user id, guest identity, session token or host secret). The per-IP
+    limit in ``app.core.abuse`` (``EXPORT_ROUTE``) guards the compute and counts every
+    request; a file already built comes from ``export_service``'s cache, with no
+    database read."""
+    file = export_service.cached_file(public_id, format)
+    if file is None:
+        stored = _stored(db, db_service.find_game_by_public_id(db, public_id))
+        file = export_service.build_file(stored, format)
+        export_service.remember_file(public_id, format, file)
     return Response(
-        content=json.dumps(export_service.export_json(stored)),
-        media_type="application/json",
-        headers=headers,
+        content=file.content,
+        media_type=file.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{file.filename}"'},
     )
