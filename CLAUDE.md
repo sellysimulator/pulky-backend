@@ -63,8 +63,12 @@ message at startup and every signed-in user is rejected.
 - Never log secrets, tokens, identities or payloads.
 - Abuse limits (spec `00-security.md` §0.6) are constants in `app/core/abuse.py`, enforced at three
   choke points only: `AbuseMiddleware` (REST, `app/main.py`), `@guarded` (socket events) and the
-  handshake (`connection.py`, open sockets). A new costly public route goes in `ROUTE_LIMITS`; never
-  add a per-handler check. Take the client IP only from `abuse.client_ip` (`CF-Connecting-IP`, else
+  handshake (`connection.py`, open sockets). Room creation is 30 per IP per hour (`CREATE_ROUTE`, the Novus standard; a batch of up to 10
+  counts each room). A new costly public route goes in `ROUTE_LIMITS` (`_route` turns `/rooms/{code}/…` and
+  `/games/id/{public_id}/…` into templates; a window other than a minute goes in `ROUTE_WINDOWS`); never
+  add a per-handler check. The one exception: `POST /rooms/batch-create` charges the `POST
+  /rooms/create` budget one hit per room itself (`abuse.allow_room_creates`, `RateLimiter.allow(key,
+  cost)`, all or nothing), after its config passed, so it is deliberately absent from `ROUTE_LIMITS`. Take the client IP only from `abuse.client_ip` (`CF-Connecting-IP`, else
   rightmost `X-Forwarded-For`, else the peer). The first request from each IP source logs
   `client ip source: …` (never the IP), so the deployment's header can be checked in Render's logs. Async code verifies tokens with
   `await deps.verify_id_token(...)`. CPU-bound routes (`POST /config/validate`, `POST
@@ -74,11 +78,17 @@ message at startup and every signed-in user is rejected.
 
 - The wire events and error codes: spec `12-wire.md`. The frontend consumes them.
 - The REST shapes and error details: spec `13-rest-db.md` section 13.4.
-- **One host rule**: "this account hosted this game" is `user_service.is_game_host`, asked by the
-  export's bearer branch (`_may_export`, `app/api/v1/games.py`) and by `GET
-  /users/me/hosted-games/{public_id}` (204, else 404, never 403), which the results page asks
-  before it offers a signed-in host the export without the host secret. Never compare
-  `host_user_id` anywhere else; `tests/test_api/test_hosted_games.py` checks the two agree.
+- **The export is open** (spec 13.4): `GET /games/id/{public_id}/export` answers anyone, like the
+  results route, with no host secret or bearer (a guest host has no account to fall back on once
+  the room is gone). It may carry only what the results already show: never a uid, email, user
+  id, guest identity, session token or host secret (`tests/test_api/test_export.py`, the
+  `test_privacy_*` tests, run without MySQL). It names every pulquería by its alias, `P<N>` by
+  seat, with no display name (`host_display_name` included); the screens keep the names. Built
+  files sit in `export_service`'s LRU (64 files, keyed by `(public_id, format)`, in process
+  memory: per instance, empty after a restart, never expiring since a finished game never
+  changes); a cached request reads no database but still counts against the limit. Its guard is the per-IP `ROUTE_LIMITS` entry
+  `abuse.EXPORT_ROUTE`: 100 an hour, both formats together, over its own `ROUTE_WINDOWS` window,
+  answered 429 with `Retry-After: 3600`. The frontend's once-per-session buttons are UX only.
 - End-of-game stats (spec `08-money.md` section 8.6) come from one builder, `app/core/stats.py`
   `build_stats`, for both `game_finished` and the results API. Each player's `flow` (the summary's flow
   chart) is built from the day records plus the free initial pipeline, which both callers pass from the
@@ -94,6 +104,17 @@ message at startup and every signed-in user is rejected.
   none). `validate_config` takes the host config and returns `host_config`; it skips the
   break-even warning while the failure chance or loss share is hidden. `game_finished`,
   the results and the stored `game_configs.config` carry the full config.
+- **Several games at once** (spec 11.3, 13.4): `POST /rooms/batch-create` makes 2-10 rooms with one
+  config (`room_service.new_room_config`, the merge and validation of a config save; a bad one is
+  the save's 400 and makes nothing), checks `StateService.has_room_for` first and deletes what it
+  made if `RoomLimitReached` still hits partway. `POST /rooms/summary` is the dashboard's read-only
+  poll (`room_service.room_summary`): `can_start` is `room_service.can_start`, the rule
+  `start_game` checks, and a wrong secret answers like a missing room. The dashboard starts rooms
+  with the ordinary `start_game`, which checks only the secret, never the sid
+  (`tests/test_sockets/test_start_from_dashboard.py`). Every refusal of `start_game`, the
+  `@guarded` fallbacks included (`guarded("join_error", echo_room_code=True)`), is
+  `join_error {message, room_code}` (spec 12.2), so the dashboard puts it on that game's card;
+  keep the field on any new refusal there.
 - **Limits are served, not copied**: the frontend reads `limits` from `GET
   /config/defaults` (`config_schema()`) and each field's bounds from its `fields`; a new
   limit a form needs goes in `LIMITS` (`app/core/limits.py`), never in the frontend.

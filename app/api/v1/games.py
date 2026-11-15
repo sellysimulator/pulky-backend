@@ -1,10 +1,9 @@
 """Results, export and claim routes (spec 13.4, 13.8)."""
 
-import json
 import logging
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -16,8 +15,6 @@ from app.services import (
     db_service,
     export_service,
     results_service,
-    room_service,
-    state_service,
     user_service,
 )
 
@@ -26,7 +23,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 NOT_FOUND = "Results not found."
-EXPORT_FORBIDDEN = "Only the host who created this room can export it."
 NOT_A_GUEST = "That is not a guest id."
 
 
@@ -57,52 +53,26 @@ def results_by_id(public_id: str, db: Session = Depends(get_db)) -> dict:
     return results_service.results_response(_stored(db, game))
 
 
-async def _may_export(
-    db: Session, game: Game, secret: str | None, authorization: str | None
-) -> bool:
-    # The secret is the live room's; the game id check keeps a later room that reuses
-    # the code from authorising an export of this game.
-    room = await state_service.get_state_service().get_room(game.room_code)
-    if (
-        room is not None
-        and room.get("game_id") == game.public_id
-        and room_service.check_host_secret(room, {"host_secret": secret})
-    ):
-        return True
-    if not authorization:
-        return False
-    parts = authorization.split(" ")
-    if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1]:
-        return False
-    claims = await deps.verify_id_token(parts[1])
-    uid = user_service.firebase_uid(claims) if claims else None
-    return uid is not None and user_service.is_game_host(db, uid, game)
-
-
 @router.get("/games/id/{public_id}/export", response_model=None)
-async def export_game(
+def export_game(
     public_id: str,
     format: Literal["csv", "json"] = Query(...),
-    x_host_secret: str | None = Header(None),
-    authorization: str | None = Header(None),
     db: Session = Depends(get_db),
 ) -> Response:
-    game = db_service.find_game_by_public_id(db, public_id)
-    if game is None:
-        raise HTTPException(status_code=404, detail=NOT_FOUND)
-    if not await _may_export(db, game, x_host_secret, authorization):
-        raise HTTPException(status_code=403, detail=EXPORT_FORBIDDEN)
-    stored = db_service.load_stored_game(db, game.id)
-    name = f"pulky-{stored.room_code}-{stored.game_id[:8]}.{format}"
-    headers = {"Content-Disposition": f'attachment; filename="{name}"'}
-    if format == "csv":
-        return Response(
-            content=export_service.export_csv(stored),
-            media_type="text/csv; charset=utf-8",
-            headers=headers,
-        )
+    """Open to anyone who can open the game's results, like ``results_by_id``: a host
+    may be a guest with no account to prove it by once the room is gone. The files
+    carry only what the results show, every pulquería by its alias (no display name,
+    uid, email, user id, guest identity, session token or host secret). The per-IP
+    limit in ``app.core.abuse`` (``EXPORT_ROUTE``) guards the compute and counts every
+    request; a file already built comes from ``export_service``'s cache, with no
+    database read."""
+    file = export_service.cached_file(public_id, format)
+    if file is None:
+        stored = _stored(db, db_service.find_game_by_public_id(db, public_id))
+        file = export_service.build_file(stored, format)
+        export_service.remember_file(public_id, format, file)
     return Response(
-        content=json.dumps(export_service.export_json(stored)),
-        media_type="application/json",
-        headers=headers,
+        content=file.content,
+        media_type=file.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{file.filename}"'},
     )

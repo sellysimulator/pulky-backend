@@ -140,6 +140,16 @@ def _fresh_abuse_limits() -> Iterator[None]:
     abuse.reset()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_export_cache() -> Iterator[None]:
+    """Every test starts with no export file cached (spec 13.4)."""
+    from app.services import export_service
+
+    export_service.clear_cache()
+    yield
+    export_service.clear_cache()
+
+
 @pytest.fixture
 def fake_redis(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRedis]:
     from app.services import state_backend

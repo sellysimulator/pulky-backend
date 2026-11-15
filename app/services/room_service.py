@@ -158,8 +158,67 @@ def room_status(room: dict | None) -> dict:
     return status
 
 
+SUMMARY_FIELDS = (
+    "state",
+    "seats_taken",
+    "seats_total",
+    "day",
+    "duration_days",
+    "finished",
+    "can_start",
+    "start_blocked_reason",
+)
+
+
+def room_summary(room_code: str, room: dict | None, host_secret: str) -> dict:
+    """One entry of ``POST /rooms/summary``: what the multi-game dashboard shows of a
+    room its caller hosts. A gone room and a wrong ``host_secret`` give the same
+    answer, ``exists: false`` with every other field null, so it is no oracle for
+    which codes are live. Read-only, and never carries the secret."""
+    if room is None or not check_host_secret(room, {"host_secret": host_secret}):
+        return {"room_code": room_code, "exists": False} | dict.fromkeys(SUMMARY_FIELDS)
+    ok, reason = can_start(room)
+    engine = room.get("engine") or {}
+    return {
+        "room_code": room_code,
+        "exists": True,
+        "state": room["state"],
+        "seats_taken": seats_taken(room),
+        "seats_total": _seats_total(room),
+        # The day being played; 0 before the start. Read from the stored engine
+        # without rebuilding it.
+        "day": int(engine.get("day") or 0),
+        "duration_days": int(room["config"]["duration_days"]),
+        "finished": room["state"] == RoomState.FINISHED,
+        "can_start": ok,
+        "start_blocked_reason": reason,
+    }
+
+
 def config_locked(room: dict) -> bool:
     return room.get("state") in (RoomState.RUNNING, RoomState.FINISHED)
+
+
+def _merged_config(patch: dict, current: dict) -> tuple[config_models.GameConfig, dict]:
+    """``patch`` merged over the host config ``current`` and validated: the engine's
+    config and the host's (a hidden default stays null, spec 9.3). Raises
+    ``ConfigError`` with the first error."""
+    result = config_models.validate_config(patch, current)
+    if result.config is None or result.host_config is None:
+        first = result.errors[0]
+        raise config_models.ConfigError(first.field, first.message)
+    return result.config, result.host_config
+
+
+def new_room_config(patch: dict) -> dict:
+    """A new room's host config: ``patch`` over the defaults, merged and validated
+    exactly as a host's config save is (``apply_config_update``), so a batch made with
+    a config (``POST /rooms/batch-create``) gets what saving it in each lobby would.
+    An empty patch is the defaults ``POST /rooms/create`` gives. Raises ``ConfigError``.
+    """
+    if not patch:
+        return config_models.host_default_config()
+    return _merged_config(patch, config_models.host_default_config())[1]
 
 
 def apply_config_update(
@@ -168,13 +227,9 @@ def apply_config_update(
     """Merge and validate ``patch``; mutates ``room`` only on success."""
     if config_locked(room):
         raise ConfigLocked()
-    result = config_models.validate_config(patch, room["config"])
-    if result.config is None or result.host_config is None:
-        first = result.errors[0]
-        raise config_models.ConfigError(first.field, first.message)
-    config = result.config
+    config, host_config = _merged_config(patch, room["config"])
     # The room keeps the host's config: a hidden default stays null (spec 9.3).
-    room["config"] = result.host_config
+    room["config"] = host_config
     if room["state"] == RoomState.LOBBY:
         room["state"] = RoomState.CONFIGURING.value
     config_seq = next_seq(room)

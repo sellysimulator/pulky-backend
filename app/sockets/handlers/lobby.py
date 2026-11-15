@@ -278,8 +278,14 @@ async def config_update(sid: str, data: dict | None = None) -> None:
     await room_service.send(emits)
 
 
+def _start_refusal(sid: str, code: str, message: str) -> Emit:
+    """A refused ``start_game``: ``join_error`` plus the ``room_code`` it named, so the
+    multi-game dashboard shows it on that game's card (spec 11.3, 12.2)."""
+    return Emit(sid, "join_error", {"message": message, "room_code": code})
+
+
 @sio.event
-@guarded("join_error")
+@guarded("join_error", echo_room_code=True)
 async def start_game(sid: str, data: dict | None = None) -> None:
     code = _code(data)
     state = state_service.get_state_service()
@@ -287,15 +293,17 @@ async def start_game(sid: str, data: dict | None = None) -> None:
     async with state.lock(code):
         room = await state.get_room(code)
         if room is None:
-            emits.append(_join_error(sid, room_service.STATUS_NOT_FOUND))
+            emits.append(_start_refusal(sid, code, room_service.STATUS_NOT_FOUND))
         elif not room_service.check_host_secret(room, data):
-            emits.append(_join_error(sid, MSG_HOST_ONLY))
+            emits.append(_start_refusal(sid, code, MSG_HOST_ONLY))
         elif room["state"] in (RoomState.RUNNING, RoomState.FINISHED):
             return
         else:
             ok, reason = room_service.can_start(room)
             if not ok:
-                emits.append(_join_error(sid, reason or room_service.START_ALREADY))
+                emits.append(
+                    _start_refusal(sid, code, reason or room_service.START_ALREADY)
+                )
             else:
                 emits = game_service.start(room, state.next_seq)
                 await state.save_room(room["room_code"], room)
