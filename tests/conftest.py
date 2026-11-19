@@ -16,12 +16,14 @@ _SETTINGS_DEFAULTS: dict[str, str] = {
     "PORT": "8080",
     "CORS_ORIGINS": json.dumps(["https://pulkysim.web.app", "http://localhost:5173"]),
     "DB_HOST": "localhost",
-    "DB_PORT": "3306",
-    "DB_USER": "root",
+    "DB_PORT": "5432",
+    "DB_USER": "postgres",
     "DB_PASSWORD": "",
     "DB_DATABASE": "pulky",
     "DB_REQUIRE_SSL": "true",
     "DB_SSL_CA": "",
+    "DB_POOL_SIZE": "2",
+    "DB_MAX_OVERFLOW": "1",
     "REDIS_ENABLED": "false",
     "REDIS_URL": "",
     "FIREBASE_SERVICE_ACCOUNT_JSON": "",
@@ -34,6 +36,9 @@ from typing import Any  # noqa: E402
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+
+# The PostgreSQL fixtures (pg_container, pg_url, db_session) for every `dbschema` test.
+pytest_plugins = ("tests.fixtures.postgres",)
 
 
 def contains_key(payload: object, key: str) -> bool:

@@ -1,7 +1,9 @@
 """Alembic environment (spec 13.5): the URL comes from ``settings.db_url``.
 
 A caller may set ``sqlalchemy.url`` explicitly (the test suite points it at a
-Testcontainers MySQL); otherwise the application settings decide.
+Testcontainers PostgreSQL); otherwise the application settings decide, and their URL
+goes straight to ``create_engine``, never through the ini parser (which would choke
+on a ``%`` in an encoded password).
 """
 
 from typing import Any

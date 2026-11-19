@@ -2,7 +2,7 @@
 """Behaviour of the models and the migrated schema (section 17): AC4-AC7, AC9."""
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -12,51 +12,19 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from tests.fixtures.mysql import db_session, mysql_url  # noqa: F401
+from tests.fixtures.postgres import db_session, pg_url, raw_insert  # noqa: F401
 
 ROOT = Path(__file__).resolve().parents[2]
 
 GAME_INSERT = text(
     "INSERT INTO games (public_id, room_code, rng_seed, duration_days, days_played, "
     "ended_early, player_count, started_at, finished_at, host_display_name) "
-    "VALUES ('0123456789abcdef0123456789abcdef', 'ABC234', 42, 14, 14, 0, 4, "
-    "'2026-10-12 14:00:00', '2026-10-12 15:00:00', 'Ms. Ruiz')"
+    "VALUES ('0123456789abcdef0123456789abcdef', 'ABC234', 42, 14, 14, FALSE, 4, "
+    "'2026-10-12 14:00:00+00', '2026-10-12 15:00:00+00', 'Ms. Ruiz')"
 )
 
 
-def insert_row(session: Session, table: str, **values: Any) -> int:
-    """Raw INSERT naming every NOT NULL column without a database default.
-
-    Columns are read from ``information_schema`` and filled by type, so a test
-    states only what it cares about. Never names ``created_at``/``updated_at``.
-    """
-    rows = session.execute(
-        text(
-            "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM "
-            "information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
-            "AND TABLE_NAME = :t AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL "
-            "AND EXTRA NOT LIKE '%auto_increment%'"
-        ),
-        {"t": table},
-    ).all()
-    filled: dict[str, Any] = {}
-    for name, data_type, length in rows:
-        if data_type in ("json",):
-            filled[name] = "[]"
-        elif data_type in ("char", "varchar"):
-            filled[name] = ("x" * 3)[: int(length)]
-        elif data_type in ("datetime", "timestamp"):
-            filled[name] = datetime(2026, 10, 12, 14, 0, 0)
-        else:
-            filled[name] = 0
-    filled.update(values)
-    cols = ", ".join(f"`{c}`" for c in filled)
-    marks = ", ".join(f":{c}" for c in filled)
-    result = session.execute(
-        text(f"INSERT INTO `{table}` ({cols}) VALUES ({marks})"), filled
-    )
-    session.commit()
-    return int(result.lastrowid or 0)
+insert_row = raw_insert
 
 
 def make_game(session: Session, room_code: str = "ABC234", **extra: Any) -> int:
@@ -66,15 +34,46 @@ def make_game(session: Session, room_code: str = "ABC234", **extra: Any) -> int:
 
 def count(session: Session, table: str, where: str = "1=1") -> int:
     return int(
-        session.execute(text(f"SELECT COUNT(*) FROM `{table}` WHERE {where}")).scalar()
+        session.execute(text(f'SELECT COUNT(*) FROM "{table}" WHERE {where}')).scalar()
         or 0
     )
 
 
 @pytest.mark.dbschema
-def test_container_runs_in_strict_mode(db_session: Session) -> None:  # noqa: F811
-    mode = db_session.execute(text("SELECT @@sql_mode")).scalar()
-    assert "STRICT_ALL_TABLES" in str(mode)
+def test_a_missing_not_null_value_is_rejected(
+    db_session: Session,
+) -> None:  # noqa: F811
+    """PostgreSQL never fills a NOT NULL column without a default: the raw INSERTs
+    below prove the timestamps' server defaults, not a lenient database."""
+    with pytest.raises(IntegrityError):
+        db_session.execute(
+            text("INSERT INTO users (firebase_uid) VALUES ('no-display-name')")
+        )
+    db_session.rollback()
+
+
+@pytest.mark.dbschema
+def test_the_app_connect_args_set_the_session_time_zone_to_utc(
+    pg_url: str,  # noqa: F811
+) -> None:
+    """``db_connect_args`` sets ``TimeZone`` to exactly ``UTC`` (the image's own
+    default is ``Etc/UTC``), and a stored instant reads back aware, in UTC."""
+    from sqlalchemy import create_engine
+
+    from app.config import Settings
+
+    args = Settings(DB_REQUIRE_SSL=False, DB_SSL_CA="").db_connect_args
+    engine = create_engine(pg_url, connect_args=args)
+    try:
+        with engine.connect() as conn:
+            assert conn.execute(text("SHOW TimeZone")).scalar() == "UTC"
+            got = conn.execute(
+                text("SELECT CAST('2026-10-12 08:00:00-06' AS timestamptz)")
+            ).scalar()
+    finally:
+        engine.dispose()
+    assert got == datetime(2026, 10, 12, 14, tzinfo=UTC)
+    assert got.utcoffset().total_seconds() == 0
 
 
 # --- AC4 / FM1 ----------------------------------------------------------------
@@ -84,7 +83,7 @@ def test_container_runs_in_strict_mode(db_session: Session) -> None:  # noqa: F8
 def test_raw_insert_without_timestamps_succeeds_and_fills_both(
     db_session: Session,  # noqa: F811
 ) -> None:
-    """Failure mode 1: no server_default makes this insert fail under strict mode."""
+    """Failure mode 1: no server_default makes this NOT NULL insert fail."""
     db_session.execute(GAME_INSERT)
     db_session.commit()
     row = db_session.execute(text("SELECT created_at, updated_at FROM games")).one()
@@ -112,7 +111,7 @@ def test_every_table_accepts_a_raw_insert_without_timestamps(
     }[table]
     insert_row(db_session, table, **overrides)
     row = db_session.execute(
-        text(f"SELECT created_at, updated_at FROM `{table}` ORDER BY id DESC LIMIT 1")
+        text(f'SELECT created_at, updated_at FROM "{table}" ORDER BY id DESC LIMIT 1')
     ).one()
     assert row[0] is not None
     assert row[1] is not None
@@ -204,8 +203,12 @@ def test_same_room_code_and_start_under_two_ids_are_both_stored(
 def test_same_room_code_at_another_start_is_allowed(
     db_session: Session,  # noqa: F811
 ) -> None:
-    make_game(db_session, started_at=datetime(2026, 10, 12, 14))
-    make_game(db_session, started_at=datetime(2026, 10, 13, 14), public_id="b" * 32)
+    make_game(db_session, started_at=datetime(2026, 10, 12, 14, tzinfo=UTC))
+    make_game(
+        db_session,
+        started_at=datetime(2026, 10, 13, 14, tzinfo=UTC),
+        public_id="b" * 32,
+    )
     assert count(db_session, "games", "room_code = 'ABC234'") == 2
 
 
@@ -318,6 +321,8 @@ def test_money_through_the_orm(db_session: Session) -> None:  # noqa: F811
 def test_two_decimal_floats_read_back_exactly(
     db_session: Session,
 ) -> None:  # noqa: F811
+    """Money and DOUBLE PRECISION ratios bound as plain floats read back bit for
+    bit, and a BOOLEAN reads back as a bool."""
     from app.models.game import Game, Participant
 
     game = Game(
@@ -326,15 +331,16 @@ def test_two_decimal_floats_read_back_exactly(
         rng_seed=2**40,
         duration_days=14,
         days_played=14,
-        ended_early=False,
+        ended_early=True,
         player_count=1,
-        started_at=datetime(2026, 10, 12, 14),
-        finished_at=datetime(2026, 10, 12, 15),
+        started_at=datetime(2026, 10, 12, 14, tzinfo=UTC),
+        finished_at=datetime(2026, 10, 12, 15, tzinfo=UTC),
         host_display_name="Ms. Ruiz",
     )
     db_session.add(game)
     db_session.flush()
     values = [0.1, 1234.56, 99999999.99, -17.05, 0.07]
+    ratios = [0.1 + 0.2, 1 / 3, 2 / 3, 1e-300, 0.1234567890123456789]
     for i, v in enumerate(values):
         db_session.add(
             Participant(
@@ -349,7 +355,7 @@ def test_two_decimal_floats_read_back_exactly(
                 overall_market_share=None,
                 fill_rate=None,
                 waste_rate=None,
-                avg_reputation=0.5,
+                avg_reputation=ratios[i],
                 final_reputation=0.5,
                 futures_units=0,
                 cost_insurance=0,
@@ -372,14 +378,23 @@ def test_two_decimal_floats_read_back_exactly(
         for r in db_session.query(Participant).order_by(Participant.final_rank)
     ]
     assert got == values
-    assert db_session.get(Game, game.id).rng_seed == 2**40  # type: ignore[union-attr]
+    got_ratios = [
+        r.avg_reputation
+        for r in db_session.query(Participant).order_by(Participant.final_rank)
+    ]
+    assert got_ratios == ratios
+    assert all(type(r) is float for r in got_ratios)
+    stored = db_session.get(Game, game.id)
+    assert stored is not None
+    assert stored.rng_seed == 2**40
+    assert stored.ended_early is True
 
 
 # --- FM6 ----------------------------------------------------------------------
 
 
 @pytest.mark.dbschema
-def test_no_trade_day_rows_insert_under_strict_mode(
+def test_no_trade_day_rows_insert_with_sql_nulls(
     db_session: Session,  # noqa: F811
 ) -> None:
     """Failure mode 6: NULL peer_avg_price / peer_buy / peer_sell must be accepted."""

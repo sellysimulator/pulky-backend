@@ -1,7 +1,6 @@
 """End-of-game persistence and stored-game loading (spec 13.5, 13.12)."""
 
 import dataclasses
-import json
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -9,7 +8,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, cast
 
-from sqlalchemy import CursorResult, Table, insert, select
+from sqlalchemy import Table, insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -106,38 +105,12 @@ def _log_failure(message: str, room_code: str, error: BaseException) -> None:
 
 
 def _parse_room_time(value: str) -> datetime:
-    return datetime.strptime(value, _ROOM_TIME_FORMAT)
+    """A room's ``YYYY-MM-DDTHH:MM:SSZ`` time as an aware UTC datetime."""
+    return datetime.strptime(value, _ROOM_TIME_FORMAT).replace(tzinfo=UTC)
 
 
 def _as_utc(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-
-
-_DOUBLE_COLUMNS = frozenset(
-    {
-        "fill",
-        "waste",
-        "market_share",
-        "reputation_open",
-        "reputation_end",
-        "weekday_multiplier",
-        "expected_demand",
-        "overall_market_share",
-        "fill_rate",
-        "waste_rate",
-        "avg_reputation",
-        "final_reputation",
-    }
-)
-
-
-def _exact(row: dict[str, Any]) -> dict[str, Any]:
-    """PyMySQL writes floats with 15 significant digits, which loses the last bits of
-    a DOUBLE; the shortest round-trip text is parsed exactly by MySQL."""
-    return {
-        k: repr(v) if k in _DOUBLE_COLUMNS and isinstance(v, float) else v
-        for k, v in row.items()
-    }
 
 
 def _is_guest(identity: str) -> bool:
@@ -192,8 +165,8 @@ def _write_game(
             db, room_players[alias]["identity"], engine.display_names[alias]
         )
 
-    result = db.execute(
-        insert(_GAMES),
+    game_id = db.execute(
+        insert(_GAMES).returning(_GAMES.c.id),
         {
             "public_id": public_id,
             "room_code": code,
@@ -207,8 +180,7 @@ def _write_game(
             "started_at": _parse_room_time(room["started_at"]),
             "finished_at": _parse_room_time(room["finished_at"]),
         },
-    )
-    game_id = cast(CursorResult[Any], result).lastrowid
+    ).scalar_one()
 
     db.execute(
         insert(_GAME_CONFIGS),
@@ -236,7 +208,7 @@ def _write_game(
         row.update({k: stats[k] for k in _PARTICIPANT_STATS})
         row.update({k: settlement[k] for k in _SETTLEMENT_FIELDS})
         participant_rows.append(row)
-    db.execute(insert(_PARTICIPANTS), [_exact(r) for r in participant_rows])
+    db.execute(insert(_PARTICIPANTS), participant_rows)
 
     day_rows = []
     for alias in aliases:
@@ -245,12 +217,10 @@ def _write_game(
             payload["game_id"] = game_id
             payload["alias"] = alias
             day_rows.append(
-                _exact(
-                    {
-                        _PLAYER_DAY_COLUMN_OF.get(k, k): payload[k]
-                        for k in _PLAYER_DAY_COLUMNS
-                    }
-                )
+                {
+                    _PLAYER_DAY_COLUMN_OF.get(k, k): payload[k]
+                    for k in _PLAYER_DAY_COLUMNS
+                }
             )
     if day_rows:
         db.execute(insert(_PLAYER_DAYS), day_rows)
@@ -259,7 +229,7 @@ def _write_game(
     for day in market:
         payload = day.to_payload()
         payload["game_id"] = game_id
-        market_rows.append(_exact({k: payload[k] for k in _MARKET_DAY_COLUMNS}))
+        market_rows.append({k: payload[k] for k in _MARKET_DAY_COLUMNS})
     if market_rows:
         db.execute(insert(_MARKET_DAYS), market_rows)
 
@@ -269,8 +239,8 @@ def _write_game(
 def persist_finished_game(
     room: dict, session_factory: Callable[[], Session] | None = None
 ) -> str | None:
-    """Write a finished room to MySQL once, keyed by the game id it was given when it
-    finished (spec 11.3); that id, or None on failure."""
+    """Write a finished room to the database once, keyed by the game id it was given
+    when it finished (spec 11.3); that id, or None on failure."""
     code = str(room.get("room_code"))
     if room.get("state") != RoomState.FINISHED or not room.get("engine"):
         logger.error("room %s cannot be persisted: it is not finished", code)
@@ -339,21 +309,10 @@ class StoredGame:
     guest_identities: dict[str, str | None]
 
 
-def _json_value(value: Any) -> Any:
-    return json.loads(value) if isinstance(value, str | bytes) else value
-
-
-_BOOL_FIELDS = frozenset(
-    {"cooperate", "refrigeration_failure", "disrupted", "cooperation"}
-)
-
-
-def _plain(name: str, value: Any) -> Any:
-    if isinstance(value, Decimal):
-        return float(value)
-    if name in _BOOL_FIELDS and value is not None:
-        return bool(value)
-    return value
+def _plain(value: Any) -> Any:
+    """A NUMERIC money value as the float the engine holds; JSON columns arrive
+    decoded and BOOLEAN columns as bool, so nothing else needs converting."""
+    return float(value) if isinstance(value, Decimal) else value
 
 
 def _row_payload(
@@ -362,15 +321,13 @@ def _row_payload(
     column_of: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     columns = column_of or {}
-    return {name: _plain(name, row[columns.get(name, name)]) for name in fields}
+    return {name: _plain(row[columns.get(name, name)]) for name in fields}
 
 
 def _day_record(row: Mapping[Any, Any]) -> DayRecord:
     data = _row_payload(row, _PLAYER_DAY_FIELDS, _PLAYER_DAY_COLUMN_OF)
-    data["conserve_lots"] = list(_json_value(row["conserve_lots"]) or [])
-    data["peer_trades"] = list(_json_value(row["peer_trades"]) or [])
-    data["peer_buy"] = _json_value(row["peer_buy"])
-    data["peer_sell"] = _json_value(row["peer_sell"])
+    data["conserve_lots"] = list(row["conserve_lots"] or [])
+    data["peer_trades"] = list(row["peer_trades"] or [])
     return DayRecord.from_payload(data)
 
 
@@ -434,11 +391,11 @@ def load_stored_game(db: Session, game_pk: int) -> StoredGame:
         host_display_name=game.host_display_name,
         duration_days=game.duration_days,
         days_played=game.days_played,
-        ended_early=bool(game.ended_early),
+        ended_early=game.ended_early,
         started_at=_as_utc(game.started_at),
         finished_at=_as_utc(game.finished_at),
         seed=int(game.rng_seed),
-        config=_json_value(config),
+        config=config,
         records=records,
         market=[_market_day(m) for m in market_rows],
         settlements={p["alias"]: _settlement(p) for p in participants},

@@ -15,7 +15,7 @@ from app.sockets.manager import SocketManager, get_socket_manager
 from tests.conftest import FakeSocketManager
 
 ROOT = Path(__file__).resolve().parents[2]
-SECRET_ERROR = "mysql://root:secret@db"
+SECRET_ERROR = "postgresql+psycopg://postgres:secret@db/pulky"
 
 
 def _run(code: str, **env: str) -> str:
@@ -63,7 +63,7 @@ async def test_guarded_message_never_leaks_exception_text(
 
     await handler("sid-1")
     message = fake_socket_manager.emits("error")[0][2]["message"]
-    assert "secret" not in message and "mysql" not in message
+    assert "secret" not in message and "postgres" not in message
 
 
 @pytest.mark.asyncio

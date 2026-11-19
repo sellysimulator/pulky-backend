@@ -5,17 +5,18 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    CHAR,
     JSON,
     BigInteger,
     Boolean,
     DateTime,
+    Double,
     ForeignKey,
     Integer,
     Numeric,
     String,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.mysql import CHAR, DOUBLE
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -39,8 +40,8 @@ def _money() -> Mapped[Decimal]:
 
 
 def _ratio(nullable: bool = False) -> Mapped[Any]:
-    # asdecimal=False: read back as the exact float stored, never a rounded Decimal.
-    return mapped_column(DOUBLE(asdecimal=False), nullable=nullable)
+    # DOUBLE PRECISION, read back as the exact float stored, never a rounded Decimal.
+    return mapped_column(Double(asdecimal=False), nullable=nullable)
 
 
 def _int() -> Mapped[int]:
@@ -59,6 +60,8 @@ class Game(TimestampMixin, Base):
     __tablename__ = "games"
 
     id: Mapped[int] = _id()
+    # Fixed width is exact: a public_id is always uuid4().hex (32) and a room code
+    # always ROOM_CODE_LENGTH (6), so PostgreSQL never pads a stored value.
     public_id: Mapped[str] = mapped_column(CHAR(32), unique=True)
     room_code: Mapped[str] = mapped_column(CHAR(6), index=True)
     host_user_id: Mapped[int | None] = mapped_column(

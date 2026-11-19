@@ -5,9 +5,10 @@ import csv
 import io
 import json
 from collections.abc import Callable, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,10 +19,10 @@ from app.core.engine import PulkyEngine
 from app.services import db_service, export_service
 from app.services.db_service import StoredGame
 from app.services.export_service import csv_safe, export_csv, export_json
-from app.services.results_service import results_response
+from app.services.results_service import iso_utc, results_response
 from app.services.state_service import reset_state_service
 from tests.conftest import contains_key
-from tests.fixtures.mysql import db_session, mysql_url  # noqa: F401
+from tests.fixtures.postgres import db_session, pg_url  # noqa: F401
 from tests.test_api.test_results import (  # noqa: F401
     api,
     assert_no_secrets,
@@ -364,9 +365,23 @@ def test_ac3_exported_files_carry_no_identity(
     assert guest_id(1) not in api.get(url(game["id"])).text
 
 
-# --------------------------------------------------- without MySQL
+# --------------------------------------------------- without a database
 # The route and the builders on a game held in memory: the open access, the 404,
 # the 429 and the privacy check run in every suite, Docker or not.
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        datetime(2026, 10, 12, 14, tzinfo=UTC),
+        datetime(2026, 10, 12, 14, tzinfo=ZoneInfo("UTC")),  # what psycopg returns
+        datetime(2026, 10, 12, 8, tzinfo=timezone(timedelta(hours=-6))),
+        datetime(2026, 10, 12, 14),  # naive (SQLite): taken to be UTC
+    ],
+)
+def test_iso_utc_writes_every_instant_in_utc_with_z(value: datetime) -> None:
+    assert iso_utc(value) == "2026-10-12T14:00:00Z"
+
 
 UID = "uid-firebase-ana-5150"
 EMAIL = "ana.ruiz.host@example.com"
@@ -416,7 +431,7 @@ def held(
     monkeypatch: pytest.MonkeyPatch,
     memory_backend: Any,
 ) -> Iterator[dict[str, Any]]:
-    """A finished game the routes find without MySQL; its room is still live, with
+    """A finished game the routes find without a database; its room is still live, with
     a signed-in host (``UID``) who also played as P1 and a guest as P2."""
     room = make_room(
         engine,

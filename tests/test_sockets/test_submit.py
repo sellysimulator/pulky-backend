@@ -8,7 +8,7 @@ Persistence seam: no test here calls section 18 with a real session factory
 except the ``dbschema`` test of test_full_game. Everywhere else the module
 attribute ``app.services.db_service.persist_finished_game`` is replaced by a
 spy (the call is made through the module at call time, plan 18 3.1a and
-00-conventions 3), so a finishing game never reaches a developer's MySQL.
+00-conventions 3), so a finishing game never reaches a developer's database.
 """
 
 import asyncio

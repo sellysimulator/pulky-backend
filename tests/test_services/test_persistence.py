@@ -1,7 +1,7 @@
 # ruff: noqa: F811
-"""Black-box tests for section 18: end-of-game persistence (all against MySQL).
+"""Black-box tests for section 18: end-of-game persistence (all against PostgreSQL).
 
-Every test passes a ``session_factory`` bound to the Testcontainers MySQL of
+Every test passes a ``session_factory`` bound to the Testcontainers PostgreSQL of
 section 17. Nothing here ever uses the default session factory.
 """
 
@@ -13,7 +13,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -36,7 +36,7 @@ from app.services.db_service import (
 )
 from app.services.state_service import new_room_document
 from app.services.stats_service import get_or_create_user, rebuild_user_stats
-from tests.fixtures.mysql import db_session, mysql_url  # noqa: F401
+from tests.fixtures.postgres import db_session, pg_url, raw_insert  # noqa: F401
 
 pytestmark = pytest.mark.dbschema
 
@@ -203,8 +203,8 @@ def secrets_of(room: dict[str, Any]) -> list[str]:
 
 
 @pytest.fixture()
-def db_engine(mysql_url: str) -> Iterator[Engine]:
-    engine = create_engine(mysql_url)
+def db_engine(pg_url: str) -> Iterator[Engine]:
+    engine = create_engine(pg_url)
     yield engine
     engine.dispose()
 
@@ -225,7 +225,7 @@ def scalar(db: Session, sql: str, **params: Any) -> Any:
 
 
 def count(db: Session, table: str, where: str = "1=1") -> int:
-    return int(scalar(db, f"SELECT COUNT(*) FROM `{table}` WHERE {where}"))
+    return int(scalar(db, f'SELECT COUNT(*) FROM "{table}" WHERE {where}'))
 
 
 def table_counts(db: Session) -> dict[str, int]:
@@ -242,7 +242,7 @@ def num(value: Any) -> Any:
 
 
 def insert_table(statement: str) -> str | None:
-    m = re.match(r"\s*INSERT\s+(?:IGNORE\s+)?INTO\s+`?(\w+)`?", statement, re.I)
+    m = re.match(r'\s*INSERT\s+INTO\s+"?(\w+)"?', statement, re.I)
     return m.group(1).lower() if m else None
 
 
@@ -337,8 +337,10 @@ def test_ac1_a_finished_room_is_written_as_specified(
     assert g["rng_seed"] == peer_engine.seed
     assert g["duration_days"] == 7 and g["days_played"] == 7
     assert not g["ended_early"] and g["player_count"] == 2
-    assert g["started_at"].replace(tzinfo=None) == datetime(2026, 10, 12, 14, 0, 0)
-    assert g["finished_at"].replace(tzinfo=None) == datetime(2026, 10, 12, 15, 0, 0)
+    # timestamptz: the room's "...Z" times are stored and read back as aware UTC
+    assert g["started_at"] == datetime(2026, 10, 12, 14, 0, 0, tzinfo=UTC)
+    assert g["finished_at"] == datetime(2026, 10, 12, 15, 0, 0, tzinfo=UTC)
+    assert g["started_at"].utcoffset().total_seconds() == 0
     assert g["created_at"] is not None and g["updated_at"] is not None
 
     (cfg_row,) = rows(db_session, "SELECT * FROM game_configs")
@@ -674,7 +676,7 @@ def test_fm1_every_persisted_row_carries_its_timestamps(
     for table in TABLES:
         missing = db_session.execute(
             text(
-                f"SELECT COUNT(*) FROM `{table}` "
+                f'SELECT COUNT(*) FROM "{table}" '
                 "WHERE created_at IS NULL OR updated_at IS NULL"
             )
         ).scalar()
@@ -723,8 +725,8 @@ def test_fm6_a_stored_and_reloaded_game_equals_the_engine_field_for_field(
     assert g.room_code == "ABC234" and g.host_display_name == "Ms. Ruiz"
     assert g.duration_days == 7 and g.days_played == 7 and g.ended_early is False
     assert g.seed == peer_engine.seed
-    assert g.started_at.replace(tzinfo=None) == datetime(2026, 10, 12, 14, 0, 0)
-    assert g.finished_at.replace(tzinfo=None) == datetime(2026, 10, 12, 15, 0, 0)
+    assert g.started_at == datetime(2026, 10, 12, 14, 0, 0, tzinfo=UTC)
+    assert g.finished_at == datetime(2026, 10, 12, 15, 0, 0, tzinfo=UTC)
     assert g.config == room["config"]
     assert g.display_names == peer_engine.display_names
     assert isinstance(g.user_ids["P1"], int) and g.user_ids["P2"] is None
@@ -781,15 +783,17 @@ def test_fm8_days_without_limits_store_sql_null_not_json_null(
     # a stored JSON null would be NOT SQL NULL; the day-1 rows must be found by IS NULL
     assert count(db_session, "player_days", "day = 1 AND peer_buy IS NULL") == 2
     assert count(db_session, "player_days", "day = 1 AND peer_sell IS NULL") == 2
-    assert count(db_session, "player_days", "JSON_TYPE(peer_buy) = 'NULL'") == 0
-    assert count(db_session, "player_days", "JSON_TYPE(peer_sell) = 'NULL'") == 0
+    assert count(db_session, "player_days", "json_typeof(peer_buy) = 'null'") == 0
+    assert count(db_session, "player_days", "json_typeof(peer_sell) = 'null'") == 0
     assert (
-        count(db_session, "player_days", "JSON_TYPE(peer_buy) = 'OBJECT'")
+        count(db_session, "player_days", "json_typeof(peer_buy) = 'object'")
         == 14 - want_buy_null
     )
     # empty lists, not NULL and not JSON null
-    assert count(db_session, "player_days", "JSON_LENGTH(peer_trades) = 0") == 12
-    assert count(db_session, "player_days", "JSON_TYPE(conserve_lots) <> 'ARRAY'") == 0
+    assert count(db_session, "player_days", "json_array_length(peer_trades) = 0") == 12
+    assert (
+        count(db_session, "player_days", "json_typeof(conserve_lots) <> 'array'") == 0
+    )
     # market days: SQL NULL on a no-trade day
     no_trade = sum(m.peer_avg_price is None for m in peer_engine.market_history())
     assert no_trade == 6
@@ -849,10 +853,19 @@ def test_ac8_two_games_under_one_reissued_code_are_kept_apart_by_id(
     second = persist(make_room(peer_engine, host_name="Second"), factory, db_session)
     assert first != second and count(db_session, "games") == 2
     db_session.rollback()
+    ids = set()
     for public_id, host in ((first, "First"), (second, "Second")):
         game = find_game_by_public_id(db_session, public_id)
         assert game is not None and game.room_code == "ABC234"
         assert game.host_display_name == host
+        ids.add(game.id)
+        # every child row carries the id RETURNING gave its own game
+        where = f"game_id = {game.id}"
+        assert count(db_session, "game_configs", where) == 1
+        assert count(db_session, "participants", where) == 2
+        assert count(db_session, "player_days", where) == 2 * 7
+        assert count(db_session, "market_days", where) == 7
+    assert len(ids) == 2
 
 
 # --------------------------------------------------------------- user stats
@@ -934,37 +947,6 @@ def test_ac7_rebuild_user_stats_for_a_user_with_two_games_one_won(
     (row,) = rows(db_session, "SELECT * FROM user_stats")
     assert row["user_id"] == user["id"]
     check_stats(row, want)
-
-
-def raw_insert(db: Session, table: str, **values: Any) -> int:
-    """Raw INSERT of every NOT NULL column without a default (no timestamps)."""
-    cols = db.execute(
-        text(
-            "SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM "
-            "information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
-            "AND TABLE_NAME = :t AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT IS NULL "
-            "AND EXTRA NOT LIKE '%auto_increment%'"
-        ),
-        {"t": table},
-    ).all()
-    filled: dict[str, Any] = {}
-    for name, data_type, length in cols:
-        if data_type == "json":
-            filled[name] = "[]"
-        elif data_type in ("char", "varchar"):
-            filled[name] = "x" * min(3, int(length))
-        elif data_type in ("datetime", "timestamp"):
-            filled[name] = datetime(2026, 10, 12, 14, 0, 0)
-        else:
-            filled[name] = 0
-    filled.update(values)
-    names = ", ".join(f"`{c}`" for c in filled)
-    marks = ", ".join(f":{c}" for c in filled)
-    result = db.execute(
-        text(f"INSERT INTO `{table}` ({names}) VALUES ({marks})"), filled
-    )
-    db.commit()
-    return int(result.lastrowid or 0)
 
 
 def test_rebuild_user_stats_means_skip_null_rates_and_users_are_independent(

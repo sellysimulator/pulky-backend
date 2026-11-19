@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.engine import PulkyEngine
 from app.services.user_service import upsert_user
-from tests.fixtures.mysql import db_session, mysql_url  # noqa: F401
+from tests.fixtures.postgres import db_session, pg_url  # noqa: F401
 from tests.test_api.test_results import (  # noqa: F401
     NEED_SIGN_IN,
     NO_SIGN_IN,
