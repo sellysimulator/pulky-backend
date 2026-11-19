@@ -51,7 +51,7 @@ def test_defaults_equal_the_spec_table(pristine: None) -> None:
     assert s.DB_PORT == 5432
     assert s.DB_USER == "postgres"
     assert s.DB_PASSWORD == ""
-    assert s.DB_DATABASE == "pulky"
+    assert s.DB_DATABASE == "pulkydb"
     assert s.DB_REQUIRE_SSL is True
     assert s.DB_SSL_CA == ""
     assert s.DB_POOL_SIZE == 2
@@ -74,7 +74,7 @@ def test_db_url_encodes_the_credentials() -> None:
         DB_USER="ana@pulky", DB_PASSWORD="p@ss:w/rd%#?", DB_HOST="h", DB_PORT=5432
     )
     assert s.db_url == (
-        "postgresql+psycopg://ana%40pulky:p%40ss%3Aw%2Frd%25%23%3F@h:5432/pulky"
+        "postgresql+psycopg://ana%40pulky:p%40ss%3Aw%2Frd%25%23%3F@h:5432/pulkydb"
     )
     url = make_url(s.db_url)
     assert url.username == "ana@pulky" and url.password == "p@ss:w/rd%#?"

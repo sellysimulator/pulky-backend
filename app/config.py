@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     DB_PORT: int = 5432
     DB_USER: str = "postgres"
     DB_PASSWORD: str = ""
-    DB_DATABASE: str = "pulky"
+    DB_DATABASE: str = "pulkydb"
     DB_REQUIRE_SSL: bool = True
     DB_SSL_CA: str = ""
     # Per instance at most 2 + 1 = 3 connections: one 20-connection PostgreSQL

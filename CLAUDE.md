@@ -48,7 +48,7 @@ or the models drift from the migrations.
 
 Settings are environment variables (a local dotenv file works): see the template file
 `.env.example`, where an empty value means the default. `CORS_ORIGINS` never contains
-`"*"`. The database is PostgreSQL (`DB_*`, port 5432), in production the database `pulky` on
+`"*"`. The database is PostgreSQL (`DB_*`, port 5432), in production the database `pulkydb` on
 the Aiven service shared by the four Novus games: `DB_SSL_CA` (that service's CA, the
 same for all four games, PEM text or path) means `sslmode=verify-full`; without it `DB_REQUIRE_SSL=true` means
 `sslmode=require` (encrypted, not verified). Every session runs in UTC (`db_connect_args`).

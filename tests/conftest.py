@@ -19,7 +19,7 @@ _SETTINGS_DEFAULTS: dict[str, str] = {
     "DB_PORT": "5432",
     "DB_USER": "postgres",
     "DB_PASSWORD": "",
-    "DB_DATABASE": "pulky",
+    "DB_DATABASE": "pulkydb",
     "DB_REQUIRE_SSL": "true",
     "DB_SSL_CA": "",
     "DB_POOL_SIZE": "2",
