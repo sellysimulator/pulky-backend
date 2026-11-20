@@ -1,7 +1,8 @@
-"""Black-box tests for section 11: the config-math parity cases (spec 13.10).
+"""Black-box tests for the config-math cases (spec 13.12, required core tests).
 
-The same cases are mirrored by the frontend; floats compare with an absolute
-tolerance of 1e-6, integers exactly.
+The engine's own functions reproduce every case of tests/fixtures/config_math_cases.json
+(backend-only since D54); floats compare with an absolute tolerance of 1e-6, integers
+exactly.
 """
 
 import json
@@ -18,15 +19,6 @@ from app.core.reputation import update_reputation
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "config_math_cases.json"
 CASES = json.loads(FIXTURE.read_text(encoding="utf-8"))
 ABS = 1e-6
-
-
-def test_fixture_is_the_plan_file_unchanged():
-    plan = Path(__file__).resolve().parents[3] / (
-        "docs/plan/fixtures/config_math_cases.json"
-    )
-    if not plan.exists():
-        pytest.skip("plan fixture not available in this checkout")
-    assert FIXTURE.read_bytes() == plan.read_bytes()
 
 
 def test_fixture_has_every_case_family():

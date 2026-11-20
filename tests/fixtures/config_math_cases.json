@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared config-math cases (spec \u00a73.3, \u00a73.5, \u00a76.2, \u00a76.4, \u00a77.1, \u00a77.6). Copied unchanged into Pulky_Backend/tests/fixtures/ (section 11) and Pulky_Frontend/src/__tests__/fixtures/ (section 24). Compare floats with abs tolerance 1e-6; integers (quality, days_left, the guide's days) exactly.",
+  "_comment": "Shared config-math cases (spec \u00a73.3, \u00a73.5, \u00a76.2, \u00a76.4, \u00a77.1, \u00a77.6). Backend-only (spec D54), read by tests/test_core/test_config_math_parity.py. Compare floats with abs tolerance 1e-6; integers (quality, days_left, the guide's days) exactly.",
   "weekday_multiplier": [
     {
       "day": "mon",

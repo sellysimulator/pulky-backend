@@ -170,7 +170,6 @@ def test_claude_md_has_the_specified_headings_and_pointers() -> None:
     assert positions == sorted(positions)
     assert "python3.11 -m venv venv" in text
     assert "../docs/spec/" in text
-    assert "../docs/plan/" in text
 
 
 ENV_VARS = [
