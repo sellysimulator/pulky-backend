@@ -1,12 +1,12 @@
 # ruff: noqa: F811
-"""A full recorded game, lobby to game_persisted (plan section 16, criteria 4, 8).
+"""A full recorded game, lobby to game_persisted.
 
 The redaction audit of spec 11.1 runs over every emit of the game. The secret
-config values are the distinctive ones of section 15 (SECRET_PATCH), and day 1
+config values are the distinctive ones of the socket fixtures (SECRET_PATCH), and day 1
 has two real peer trades (see test_play_redaction for the scenario).
 
 Persistence seam: the spy of test_submit for every test but the last, which is
-the ``dbschema`` test: it restores section 18's real function and points
+the ``dbschema`` test: it restores the real function and points
 ``app.db.session.SessionLocal`` at the Testcontainers PostgreSQL.
 """
 
@@ -132,7 +132,7 @@ async def test_the_peer_trades_of_day_one_happened_and_are_public_only_in_total(
     )
 
 
-# ---------------------------------------------------------- redaction (AC 8)
+# ----------------------------------------------------------------- redaction
 @aio
 async def test_no_room_emit_carries_private_data_except_game_finished(
     world: World, persist: PersistSpy
@@ -226,7 +226,7 @@ async def test_the_decision_of_day_one_is_in_no_broadcast_for_the_whole_game(
     assert not contains_key(finished, "peer_buy")
 
 
-# ------------------------------------------------------ real database (AC 4)
+# ------------------------------------------------------------- real database
 @pytest.fixture
 def real_persistence(
     pg_url: str, monkeypatch: pytest.MonkeyPatch  # noqa: F811

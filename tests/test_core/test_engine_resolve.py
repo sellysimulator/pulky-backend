@@ -1,4 +1,4 @@
-"""Black-box tests for section 11: PulkyEngine.resolve_day (spec 4.4, S1 to S16)."""
+"""Black-box tests for PulkyEngine.resolve_day (spec 4.4, S1 to S16)."""
 
 import copy
 import sys
@@ -213,7 +213,7 @@ def test_demand_is_split_by_reputation_at_the_start_of_the_day():
     assert sum(split.values()) == pytest.approx(1.0, abs=1e-9)
 
 
-# ------------------------------------------------------------ timing (AC 5)
+# ------------------------------------------------------------------- timing
 
 
 @pytest.mark.parametrize("lead", [0, 1, 3])
@@ -506,7 +506,7 @@ def test_insurance_refund_is_credited_on_the_arrival_day_at_the_tier_value(tier,
 
 
 def test_an_empty_shipment_is_pushed_every_day_so_arrivals_stay_on_time():
-    # spec 11 failure mode 10; with L = 2 and the buggy "push only when something
+    # With L = 2 and the buggy "push only when something
     # ships" pipeline, the day-4 shipment would arrive on day 4 instead of day 6.
     config = quiet(
         2,
@@ -533,7 +533,7 @@ def test_an_empty_shipment_is_pushed_every_day_so_arrivals_stay_on_time():
 
 
 def test_units_delivered_today_are_sold_before_tonights_check():
-    # spec 11 failure mode 12: F = 0, so a lot ages into risk on its first night
+    # F = 0, so a lot ages into risk on its first night
     config = quiet(
         2,
         stock__fresh_days=0,
@@ -992,7 +992,7 @@ def cash_when_market_opens(r):
 
 
 def test_buyer_without_cash_when_the_market_opens_buys_nothing_even_when_selling():
-    # spec 11 failure modes 13 and 16: P1's futures transport (66) takes it below
+    # P1's futures transport (66) takes it below
     # zero, while its sales to P3 (7 x $13) must not fund its own purchases.
     e, out, cash = peer_cash_engine(830)
     r1, r3 = out.records["P1"], out.records["P3"]
@@ -1085,7 +1085,6 @@ def test_bought_lot_keeps_the_sellers_age_quality_shelf_life_and_conserved_flag(
 
 
 def test_a_player_who_sells_and_buys_never_resells_what_it_bought_today():
-    # spec 11 failure mode 15
     config = quiet(
         2,
         stock__fresh_days=1,

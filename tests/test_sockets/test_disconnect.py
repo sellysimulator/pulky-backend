@@ -1,4 +1,4 @@
-"""Black-box tests for disconnect bookkeeping (section 15 3.8, criterion 9)."""
+"""Black-box tests for disconnect bookkeeping (spec 11.3)."""
 
 import copy
 

@@ -1,4 +1,4 @@
-"""Section 03: records (black-box, from the documents)."""
+"""Records (black-box, from the documents)."""
 
 import copy
 import dataclasses

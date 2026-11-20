@@ -1,4 +1,4 @@
-"""Black-box tests for section 11: submit, outlay and the decision checks."""
+"""Black-box tests for submit, outlay and the decision checks."""
 
 import copy
 

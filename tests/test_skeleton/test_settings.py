@@ -135,7 +135,7 @@ def test_get_settings_is_cached_and_module_instance_exists() -> None:
 
 
 def test_wildcard_cors_is_rejected_by_keyword() -> None:
-    """Failure mode 8: allow_credentials=True with '*' must never start."""
+    """allow_credentials=True with '*' must never start."""
     with pytest.raises(ValidationError):
         Settings(CORS_ORIGINS=["*"])
     with pytest.raises(ValidationError):
@@ -153,7 +153,7 @@ def test_wildcard_cors_is_rejected_from_the_environment(
 def test_suite_is_hermetic_from_a_dotenv_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """AC17: a .env in the working directory cannot change the defaults."""
+    """A .env in the working directory cannot change the defaults."""
     (tmp_path / ".env").write_text(
         "REDIS_ENABLED=true\n"
         'FIREBASE_SERVICE_ACCOUNT_JSON=\'{"type": "service_account"}\'\n'

@@ -1,4 +1,4 @@
-"""Black-box tests for join, leave and reconnect (section 15 3.3, 3.4, 3.7)."""
+"""Black-box tests for join, leave and reconnect (spec 11.3)."""
 
 import asyncio
 import copy
@@ -94,7 +94,6 @@ async def test_missing_room_is_not_found(world: World) -> None:
 async def test_one_identity_joining_three_times_seats_one_participant(
     world: World, who: int | str
 ) -> None:
-    # Failure mode 1 and the section 4 example.
     code = await world.create_room()
     first = await world.seat(code, "a", who)
     second = await world.seat(code, "b", who)  # fresh sid, no token
@@ -164,7 +163,6 @@ async def test_an_unknown_token_with_the_right_identity_still_finds_the_seat(
 
 @aio
 async def test_stolen_token_never_takes_over_the_seat(world: World) -> None:
-    # Failure mode 3.
     code = await world.create_room()
     victim = await world.seat(code, "p1", 1)
     before = copy.deepcopy((await world.room(code))["participants"]["P1"])
@@ -199,7 +197,6 @@ async def test_stolen_token_in_a_full_room_is_refused(world: World) -> None:
 async def test_lowest_free_alias_is_reissued_and_other_seats_are_untouched(
     world: World,
 ) -> None:
-    # Failure mode 2 and the section 4 example.
     code = await world.create_room()
     for n in (1, 2, 3):
         await world.seat(code, f"p{n}", n)
@@ -255,7 +252,6 @@ async def test_finished_game_refuses_new_seats(world: World) -> None:
 # --------------------------------------------------------------- reconnects
 @aio
 async def test_reconnect_drops_the_stale_sid(world: World) -> None:
-    # Failure mode 9, first half.
     code = await world.create_room()
     await world.seat(code, "a", 1)
     await world.seat(code, "b", 1)
@@ -269,7 +265,6 @@ async def test_reconnect_drops_the_stale_sid(world: World) -> None:
 async def test_stale_sid_disconnecting_later_does_not_disconnect_the_player(
     world: World,
 ) -> None:
-    # Failure mode 9, second half.
     code = await world.create_room()
     await world.seat(code, "a", 1)
     await world.seat(code, "b", 1)

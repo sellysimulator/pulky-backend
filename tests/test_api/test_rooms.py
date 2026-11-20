@@ -1,4 +1,4 @@
-"""Black-box tests for the room REST routes (section 14)."""
+"""Black-box tests for the room REST routes (spec 13.4)."""
 
 import asyncio
 import copy

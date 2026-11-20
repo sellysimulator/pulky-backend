@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""Black-box tests for section 19: the user routes (profile, stats, games played)."""
+"""Black-box tests for the user routes (profile, stats, games played)."""
 
 from collections.abc import Callable
 from datetime import datetime
@@ -164,7 +164,7 @@ def secrets_of_world(world: dict[str, Any]) -> list[str]:
     return out
 
 
-# --------------------------------------------------- AC 6: auth
+# --------------------------------------------------------- auth
 
 
 @pytest.mark.parametrize("route", ROUTES, ids=[f"{m} {u[-20:]}" for m, u in ROUTES])
@@ -177,7 +177,7 @@ def secrets_of_world(world: dict[str, Any]) -> list[str]:
         {"Authorization": "Bearer not-a-valid-token"},
     ],
 )
-def test_ac6_user_routes_answer_401_without_a_valid_bearer(
+def test_user_routes_answer_401_without_a_valid_bearer(
     route: tuple[str, str],
     headers: dict[str, str],
     bare_api: TestClient,
@@ -190,7 +190,7 @@ def test_ac6_user_routes_answer_401_without_a_valid_bearer(
 
 
 @pytest.mark.parametrize("route", ROUTES, ids=[f"{m} {u[-20:]}" for m, u in ROUTES])
-def test_ac6_user_routes_answer_503_when_firebase_is_unconfigured(
+def test_user_routes_answer_503_when_firebase_is_unconfigured(
     route: tuple[str, str], bare_api: TestClient
 ) -> None:
     res = call(bare_api, route, headers={"Authorization": "Bearer anything"})
@@ -198,7 +198,7 @@ def test_ac6_user_routes_answer_503_when_firebase_is_unconfigured(
     assert res.json() == NO_SIGN_IN
 
 
-# --------------------------------------------------- AC 6: upsert and me
+# --------------------------------------------------------- upsert and me
 
 
 @pytest.mark.dbschema
@@ -304,7 +304,7 @@ def test_me_creates_the_row_when_missing_and_keeps_an_upserted_name(
 
 
 @pytest.mark.dbschema
-def test_fm4_the_uid_comes_from_the_token_never_from_body_or_query(
+def test_the_uid_comes_from_the_token_never_from_body_or_query(
     api: TestClient, db_session: Session, firebase_tokens: dict[str, Any]
 ) -> None:
     sign_in(firebase_tokens, BOB, email="bob@example.com", name="Bob")
@@ -410,11 +410,11 @@ def test_stats_aggregate_the_games_the_caller_played(
     assert body["avg_market_share"] == pytest.approx(mean(shares), abs=1e-6)
 
 
-# --------------------------------------------------- games list and detail (AC 7)
+# ---------------------------------------------------------- games list and detail
 
 
 @pytest.mark.dbschema
-def test_ac7_the_games_list_holds_only_played_games_newest_first(
+def test_the_games_list_holds_only_played_games_newest_first(
     api: TestClient,
     world: dict[str, Any],
     engines: dict[str, PulkyEngine],
@@ -447,7 +447,7 @@ def test_ac7_the_games_list_holds_only_played_games_newest_first(
 
 
 @pytest.mark.dbschema
-def test_ac7_detail_returns_the_results_plus_my_alias(
+def test_detail_returns_the_results_plus_my_alias(
     api: TestClient, world: dict[str, Any], firebase_tokens: dict[str, Any]
 ) -> None:
     bearer = sign_in(firebase_tokens, ANA)
@@ -460,7 +460,7 @@ def test_ac7_detail_returns_the_results_plus_my_alias(
 
 
 @pytest.mark.dbschema
-def test_fm3_a_game_the_caller_did_not_play_answers_like_a_random_id(
+def test_a_game_the_caller_did_not_play_answers_like_a_random_id(
     api: TestClient, world: dict[str, Any], firebase_tokens: dict[str, Any]
 ) -> None:
     bearer = sign_in(firebase_tokens, ANA)
@@ -483,7 +483,7 @@ def test_fm3_a_game_the_caller_did_not_play_answers_like_a_random_id(
 
 
 @pytest.mark.dbschema
-def test_fm4_spoofed_uid_in_the_query_changes_nothing(
+def test_spoofed_uid_in_the_query_changes_nothing(
     api: TestClient, world: dict[str, Any], firebase_tokens: dict[str, Any]
 ) -> None:
     sign_in(firebase_tokens, BOB)
@@ -498,11 +498,11 @@ def test_fm4_spoofed_uid_in_the_query_changes_nothing(
     assert res.status_code == 404
 
 
-# --------------------------------------------------- AC 3: no leaks
+# --------------------------------------------------------- no leaks
 
 
 @pytest.mark.dbschema
-def test_ac3_no_user_route_carries_an_identity_or_a_credential(
+def test_no_user_route_carries_an_identity_or_a_credential(
     api: TestClient, world: dict[str, Any], firebase_tokens: dict[str, Any]
 ) -> None:
     bearer = sign_in(firebase_tokens, ANA, email="ana@example.com", name="Ana")
@@ -524,7 +524,7 @@ def test_ac3_no_user_route_carries_an_identity_or_a_credential(
         assert "uid-ana" not in res.text
 
 
-# --------------------------------------------------- AC 8: queries
+# --------------------------------------------------------- queries
 
 
 class Counter:
@@ -548,7 +548,7 @@ class Counter:
 
 @pytest.mark.dbschema
 @pytest.mark.parametrize("path", ["/api/v1/users/me/games", "/api/v1/users/me/stats"])
-def test_ac8_query_count_does_not_grow_with_the_number_of_games(
+def test_query_count_does_not_grow_with_the_number_of_games(
     path: str,
     api: TestClient,
     factory: Callable[[], Session],

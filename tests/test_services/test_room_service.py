@@ -1,4 +1,4 @@
-"""Black-box tests for the shared room rules (section 14)."""
+"""Black-box tests for the shared room rules (spec 11.3)."""
 
 import copy
 from typing import Any

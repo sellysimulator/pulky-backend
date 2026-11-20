@@ -1,4 +1,4 @@
-"""Black-box tests for section 11: natural and early end, settlement, futures money."""
+"""Black-box tests for natural and early end, settlement, futures money."""
 
 import copy
 
@@ -184,7 +184,6 @@ def test_early_end_liquidates_cellar_and_transit_and_refunds_what_is_owed():
 
 
 def test_early_end_writes_no_record_for_the_open_day():
-    # spec 11 failure mode 11
     e = early_engine()
     before = {a: len(e.records(a)) for a in e.aliases}
     history = (len(e.public_history()), len(e.market_history()))
@@ -218,7 +217,7 @@ def test_settlements_are_empty_until_the_game_is_finished():
 
 
 def test_futures_are_paid_once_and_refunded_only_when_unfilled_or_cancelled():
-    # spec 11 failure mode 4: scarce capacity so that some units go unfilled
+    # scarce capacity so that some units go unfilled
     config = short(supplier__capacity_mean_per_player=4, demand__per_player_peak=2)
     e = start(config, seed=13)
     bought = {"P1": 0, "P2": 0}

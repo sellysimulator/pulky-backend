@@ -1,4 +1,4 @@
-"""Black-box tests for section 06 supply: AbstractSupplier, hamilton, allocate."""
+"""Black-box tests for supply (spec 5.1, 5.4): AbstractSupplier, hamilton, allocate."""
 
 import random
 from math import floor
@@ -92,7 +92,7 @@ def test_draw_day_is_pure_in_day_and_ignores_history() -> None:
 
 @pytest.mark.parametrize(("mean_pp", "want"), [(0.625, 3), (0.125, 1), (1.125, 5)])
 def test_capacity_rounds_halves_up_not_to_even(mean_pp: float, want: int) -> None:
-    """Failure mode 5: sd 0 makes the gauss exactly x.5 (2.5, 0.5, 4.5), where
+    """An sd of 0 makes the gauss exactly x.5 (2.5, 0.5, 4.5), where
     Python round() would give 2, 0, 4."""
     s = _make(
         capacity_mean_per_player=mean_pp,
@@ -131,7 +131,7 @@ def test_disruption_probability_one_and_zero() -> None:
 
 
 def test_disruption_draw_taken_even_when_capacity_is_zero() -> None:
-    """Failure mode 4: with capacity 0 the spot price still needs the draws of
+    """With capacity 0 the spot price still needs the draws of
     gauss and random() before the uniform."""
     for seed in range(40):
         for day in (1, 4):
@@ -246,7 +246,7 @@ def test_spec_example_allocate_and_hamilton() -> None:
 
 
 def test_cooperative_hands_out_the_whole_capacity() -> None:
-    """Failure mode 2: bases 42/35/21 sum to 98; the two leftover units must be
+    """Bases 42/35/21 sum to 98; the two leftover units must be
     handed out."""
     for fn in (
         lambda r: allocate(REQS, 100, True, r),
@@ -317,7 +317,7 @@ def _seed_with_first_draw_smaller(first_smaller: bool) -> int:
 def test_equal_largest_orders_tie_broken_by_seeded_draw(
     p1_first: bool, order: tuple[str, str]
 ) -> None:
-    """Failure mode 3: the winner follows the draws (P1 drawn first, then P2),
+    """The winner follows the draws (P1 drawn first, then P2),
     never the insertion order and never the alias."""
     seed = _seed_with_first_draw_smaller(p1_first)
     reqs = {order[0]: 40, order[1]: 40}
@@ -350,7 +350,7 @@ def test_matches_spec_reference_on_many_seeds(coop: bool) -> None:
 
 
 def test_request_never_exceeded_whatever_the_capacity() -> None:
-    """Failure mode 1: a request of 5 never receives 6."""
+    """A request of 5 never receives 6."""
     for coop in (False, True):
         for cap in (1, 5, 6, 100, 1005, 5000):
             out = allocate({"A": 5, "B": 1000}, cap, coop, random.Random(0))

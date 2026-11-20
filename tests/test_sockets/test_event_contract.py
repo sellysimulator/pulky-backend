@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""Event contract for the play loop (plan section 16, criterion 9; spec 12.1-12.2).
+"""Event contract for the play loop (spec 12.1-12.2).
 
 One run covers the lobby, a game played to its natural end, a second game ended
 early, the errors play can raise, a request_state, and a disconnect/reconnect.

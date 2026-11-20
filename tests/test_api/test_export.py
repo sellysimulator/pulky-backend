@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""Black-box tests for section 19: the export route and the CSV and JSON builders."""
+"""Black-box tests for the export route and the CSV and JSON builders."""
 
 import csv
 import io
@@ -80,7 +80,7 @@ def test_csv_safe_prefixes_text_cells_that_start_with_a_formula_character(
 
 
 @pytest.mark.parametrize("number", [-12.5, -0.01, -3, 0, 7, 12.5, 0.0])
-def test_fm2_csv_safe_leaves_numbers_as_numbers(number: float) -> None:
+def test_csv_safe_leaves_numbers_as_numbers(number: float) -> None:
     out = csv_safe(number)
     assert isinstance(out, str)
     assert not out.startswith("'")
@@ -131,7 +131,7 @@ def stored_export(db: Session, gid: str) -> tuple[str, dict[str, Any]]:
 
 
 @pytest.mark.dbschema
-def test_csv_has_one_row_per_player_per_day_in_section_03_order(
+def test_csv_has_one_row_per_player_per_day_in_record_order(
     db_session: Session, game: dict[str, Any], engine: PulkyEngine
 ) -> None:
     text, _ = stored_export(db_session, game["id"])
@@ -177,11 +177,11 @@ def test_csv_cells_follow_the_record_field_by_field(
                     assert not cell.startswith("'"), (name, cell)
                     assert float(cell) == pytest.approx(value, abs=1e-6), name
                     negative_seen = negative_seen or value < 0
-    assert negative_seen  # FM2 is exercised by this game, not vacuous
+    assert negative_seen  # a negative value occurs, so the check is not vacuous
 
 
 @pytest.mark.dbschema
-def test_fm8_peer_trades_survive_in_the_csv_and_the_json_export(
+def test_peer_trades_survive_in_the_csv_and_the_json_export(
     db_session: Session, game: dict[str, Any], engine: PulkyEngine
 ) -> None:
     text, data = stored_export(db_session, game["id"])
@@ -246,7 +246,7 @@ def test_json_export_structure(
 
 
 @pytest.mark.dbschema
-def test_ac3_the_builders_carry_no_identity(
+def test_the_builders_carry_no_identity(
     db_session: Session, game: dict[str, Any]
 ) -> None:
     text, data = stored_export(db_session, game["id"])
@@ -263,7 +263,7 @@ def test_ac3_the_builders_carry_no_identity(
 
 
 @pytest.mark.dbschema
-def test_fm1_a_formula_in_a_pulqueria_name_never_reaches_the_file(
+def test_a_formula_in_a_pulqueria_name_never_reaches_the_file(
     api: TestClient, factory: Callable[[], Session], db_session: Session
 ) -> None:
     """Names are not exported at all (P<N> only), so no name can inject a formula."""
@@ -352,7 +352,7 @@ def test_unknown_game_id_is_404_and_another_format_is_422(
 
 
 @pytest.mark.dbschema
-def test_ac3_exported_files_carry_no_identity(
+def test_exported_files_carry_no_identity(
     api: TestClient, game: dict[str, Any]
 ) -> None:
     put_live_room(live_room_for(game["id"], game["room"], secret="live-secret-A"))

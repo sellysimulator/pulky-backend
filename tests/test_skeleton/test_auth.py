@@ -35,7 +35,7 @@ def auth_client() -> TestClient:
 
 
 def test_unconfigured_firebase_verifies_nothing() -> None:
-    """Failure mode 2 / AC8: never a claims dict while unconfigured."""
+    """Never a claims dict while unconfigured."""
     assert firebase.init_firebase() is None
     assert deps.verify_firebase_id_token("anything") is None
     assert deps.verify_firebase_id_token("") is None

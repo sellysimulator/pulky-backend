@@ -1,4 +1,4 @@
-"""Black-box tests for app.core.futures (section 07)."""
+"""Black-box tests for app.core.futures (spec 5.3)."""
 
 import random
 
@@ -46,11 +46,11 @@ def test_make_contract_day_ordering_and_failure_modes(
 ) -> None:
     lead = data.draw(st.integers(0, h - 1))
     c = make_contract(day, qty, h, lead)
-    # AC1 / failure mode 1: never ships on the day it is bought
+    # never ships on the day it is bought
     assert c.contract_day < c.ships_day <= c.delivery_day
     assert c.contract_day == day and c.qty == qty
     assert c.delivery_day == day + h
-    # failure mode 2: it arrives on its delivery day, L days after shipping
+    # it arrives on its delivery day, L days after shipping
     assert c.delivery_day - c.ships_day == lead
     assert c.ships_day == day + h - lead
 
@@ -108,7 +108,7 @@ def test_take_due_returns_exactly_due_and_removes(specs, day: int) -> None:
     total = b.open_units()
     due = b.due(day)
     assert b.take_due(day) == due
-    # failure mode 3: the contract is gone after shipping, filled or not
+    # the contract is gone after shipping, filled or not
     assert b.due(day) == 0
     assert b.take_due(day) == 0
     assert b.open_units() == total - due
@@ -116,7 +116,7 @@ def test_take_due_returns_exactly_due_and_removes(specs, day: int) -> None:
 
 
 def test_shipped_contract_does_not_ship_remainder_later() -> None:
-    # failure mode 3: after take_due, nothing for this contract on any later day
+    # after take_due, nothing for this contract on any later day
     b = FuturesBook([make_contract(3, 10, 7, 1)])
     assert b.take_due(9) == 10
     assert all(b.due(d) == 0 for d in range(0, 40))
@@ -181,7 +181,6 @@ def test_fill_worked_examples() -> None:
 
 
 def test_fill_no_draw_when_not_scarce() -> None:
-    # failure mode 5
     rng = random.Random(123)
     before = rng.getstate()
     assert fill_futures({"P1": 25, "P2": 20}, 90, rng) == {"P1": 25, "P2": 20}
@@ -208,8 +207,8 @@ def test_fill_equals_hamilton(seed: int) -> None:
         )
 
 
-def test_fill_never_exceeds_due_failure_mode() -> None:
-    # failure mode 4: due 5 never receives 6
+def test_fill_never_exceeds_due() -> None:
+    # due 5 never receives 6
     out = fill_futures({"P1": 5, "P2": 1}, 6, random.Random(0))
     assert out == {"P1": 5, "P2": 1}
     out = fill_futures({"P1": 5, "P2": 5}, 9, random.Random(1))

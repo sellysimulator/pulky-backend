@@ -1,4 +1,4 @@
-"""Black-box tests for start_game and game_service (section 15 3.6, criterion 7)."""
+"""Black-box tests for start_game and game_service (spec 11.3)."""
 
 import copy
 import logging
@@ -125,7 +125,7 @@ async def test_start_payloads_match_the_engine(world: World) -> None:
 
 @aio
 async def test_game_started_skips_the_host_sid(world: World) -> None:
-    # Failure mode 7: reaching the host, it would overwrite its full config.
+    # Reaching the host, it would overwrite its full config.
     code, secret = await lobby_with(world, 2)
     start = world.mark()
     await start_game("host-1", data_of(code, secret))
@@ -203,7 +203,6 @@ async def test_a_host_who_is_offline_gets_no_host_state(world: World) -> None:
 # ------------------------------------------------------------------ refusals
 @aio
 async def test_blocked_start_repeats_the_lobby_update_reason(world: World) -> None:
-    # Failure mode 6.
     code, secret = await lobby_with(world, 1)
     lobby = world.last(code, "lobby_update")
     assert lobby["can_start"] is False

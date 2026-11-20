@@ -1,4 +1,4 @@
-"""Black-box tests for ``app.core.stats`` (plan section 10)."""
+"""Black-box tests for ``app.core.stats`` (spec 8.6)."""
 
 from __future__ import annotations
 
@@ -570,7 +570,7 @@ def ref_rank(
     return sorted(totals, key=key)
 
 
-# ------------------------------------------------- criterion 1: shape / keys
+# -------------------------------------------------------------- shape / keys
 
 
 def check_shapes(out: dict) -> None:
@@ -639,7 +639,7 @@ def test_every_display_name_player_appears() -> None:
     assert {r["alias"] for r in out["leaderboard"]} == {"P1", "P2", "P3"}
 
 
-# ------------------------------------------------- criterion 2: worked examples
+# -------------------------------------------------------------- worked examples
 
 
 def test_example_one_players() -> None:
@@ -713,7 +713,7 @@ def test_peer_example() -> None:
     assert m["series"]["peer_avg_price"] == pytest.approx([15.0, 14.5], **APPROX)
 
 
-# ----------------------------------------- per-key semantics (spec 8.6, plan 3)
+# ------------------------------------------------- per-key semantics (spec 8.6)
 
 
 def test_mixed_scenario_player_one() -> None:
@@ -828,7 +828,7 @@ def test_money_sums_are_cent_rounded() -> None:
     assert p["total_profit"] == 0.3
 
 
-# --------------------------------------------- criterion 3: score and market share
+# ---------------------------------------------------------- score and market share
 
 
 def test_total_profit_is_sum_plus_settlement_and_shares_sum_to_one() -> None:
@@ -856,7 +856,7 @@ def test_market_share_zero_when_nobody_sold() -> None:
     assert all(p["overall_market_share"] == 0 for p in out["players"].values())
 
 
-# ------------------------------------------------------ criterion 4: ranking
+# ------------------------------------------------------------------- ranking
 
 
 def test_rank_profit_dominates() -> None:
@@ -998,7 +998,7 @@ def test_build_stats_tie_uses_rank_stream() -> None:
     assert len(seen) == 2
 
 
-# -------------------------------------- criterion 5: rank_players determinism
+# --------------------------------------------------- rank_players determinism
 
 
 def test_rank_players_all_ties_depends_on_seed_not_insertion_order() -> None:
@@ -1015,7 +1015,7 @@ def test_rank_players_all_ties_depends_on_seed_not_insertion_order() -> None:
     assert len(orders) > 1
 
 
-# ------------------------------------------------ criterion 6: series lengths
+# ------------------------------------------------------------- series lengths
 
 
 def test_series_length_and_day_order() -> None:
@@ -1054,7 +1054,7 @@ def test_series_follow_input_order_not_sorted() -> None:
     assert out["players"]["P1"]["series"]["profit"] == [9.0, 1.0, 0.0]
 
 
-# ------------------------------------------------------ criterion 7: parity
+# ------------------------------------------------------------------- parity
 
 
 def test_parity_through_payload_round_trip() -> None:
@@ -1106,7 +1106,7 @@ def test_parity_through_json_payloads() -> None:
     assert out2 == out
 
 
-# ---------------------------------------------------- criterion 8: JSON safety
+# ----------------------------------------------------------------- JSON safety
 
 
 def test_output_survives_json() -> None:
@@ -1116,30 +1116,30 @@ def test_output_survives_json() -> None:
         assert json.loads(json.dumps(out)) == out
 
 
-# --------------------------------------------------- failure modes (plan 6)
+# ------------------------------------------------------------ failure modes
 
 
-def test_fm1_settlement_is_in_the_score() -> None:
+def test_settlement_is_in_the_score() -> None:
     out = example_one()
     assert out["players"]["P1"]["total_profit"] == pytest.approx(260.5, **APPROX)
     assert out["players"]["P1"]["total_profit"] != pytest.approx(250.5, abs=1e-6)
     assert out["leaderboard"][1]["total_profit"] == pytest.approx(260.5, **APPROX)
 
 
-def test_fm1_settlement_can_change_the_order() -> None:
+def test_settlement_can_change_the_order() -> None:
     records = {"P1": [rec(1, profit=10.0)], "P2": [rec(1, profit=12.0)]}
     out = build(records, settlements={"P1": settle(settlement_total=5.0)})
     assert [r["alias"] for r in out["leaderboard"]] == ["P1", "P2"]
 
 
-def test_fm2_fill_is_over_demand_not_over_owed() -> None:
+def test_fill_is_over_demand_not_over_owed() -> None:
     p1 = example_one()["players"]["P1"]
     assert p1["fill_rate"] == pytest.approx(1.0, **APPROX)
     # owed as backlog_open + demand, or as sold + backlog_end, gives 50/52
     assert p1["fill_rate"] != pytest.approx(50 / 52, abs=1e-6)
 
 
-def test_fm2_fill_with_carried_backlog_every_day() -> None:
+def test_fill_with_carried_backlog_every_day() -> None:
     rows = [
         rec(1, demand=10, sold=6, backlog_end=4),
         rec(2, demand=10, backlog_open=4, sold=8, backlog_end=6),
@@ -1149,7 +1149,7 @@ def test_fm2_fill_with_carried_backlog_every_day() -> None:
     assert p["fill_rate"] == pytest.approx(24 / 30, **APPROX)
 
 
-def test_fm3_null_fill_counts_as_one() -> None:
+def test_null_fill_counts_as_one() -> None:
     assert rank_players({"P1": (7.0, 0.5, 0.0), "P2": (7.0, None, 0.0)}, 3) == [
         "P2",
         "P1",
@@ -1165,7 +1165,7 @@ def test_fm3_null_fill_counts_as_one() -> None:
         ]
 
 
-def test_fm4_dict_order_does_not_decide_ties() -> None:
+def test_dict_order_does_not_decide_ties() -> None:
     aliases = [f"P{i}" for i in range(1, 7)]
     totals = {a: (2.0, 0.5, 0.5) for a in aliases}
     results = set()
@@ -1185,7 +1185,7 @@ def test_fm4_dict_order_does_not_decide_ties() -> None:
         ]
 
 
-def test_fm5_exact_tie_gets_distinct_ranks() -> None:
+def test_exact_tie_gets_distinct_ranks() -> None:
     for seed in range(6):
         records = {
             "P1": [rec(1, demand=4, sold=4, profit=2.0)],
@@ -1196,7 +1196,7 @@ def test_fm5_exact_tie_gets_distinct_ranks() -> None:
         assert sorted(p["rank"] for p in out["players"].values()) == [1, 2]
 
 
-def test_fm6_zero_denominators_give_nulls() -> None:
+def test_zero_denominators_give_nulls() -> None:
     out = build({"P1": [rec(1), rec(2)], "P2": [rec(1, demand=3, sold=3)]})
     p = out["players"]["P1"]
     assert p["fill_rate"] is None
@@ -1208,13 +1208,13 @@ def test_fm6_zero_denominators_give_nulls() -> None:
     assert row["fill_rate"] is None and row["waste_rate"] is None
 
 
-def test_fm6_nothing_anywhere_does_not_raise() -> None:
+def test_nothing_anywhere_does_not_raise() -> None:
     out = build({"P1": [rec(1)], "P2": [rec(1)]}, market=[mday(1)])
     assert out["market"]["avg_peer_price"] is None
     assert all(p["overall_market_share"] == 0 for p in out["players"].values())
 
 
-def test_fm7_peer_sales_are_not_sales() -> None:
+def test_peer_sales_are_not_sales() -> None:
     out = peer_example()
     p2 = out["players"]["P2"]
     assert p2["peer_units_sold"] == 5
@@ -1225,14 +1225,14 @@ def test_fm7_peer_sales_are_not_sales() -> None:
     assert out["market"]["units_sold_total"] == 0
 
 
-def test_fm8_no_trade_average_is_null_not_zero() -> None:
+def test_no_trade_average_is_null_not_zero() -> None:
     out = example_one()
     assert out["market"]["avg_peer_price"] is None
     assert out["market"]["series"]["peer_avg_price"] == [None, None]
     assert out["market"]["series"]["peer_units"] == [0, 0]
 
 
-def test_fm9_peer_average_is_value_over_units_not_mean_of_daily_averages() -> None:
+def test_peer_average_is_value_over_units_not_mean_of_daily_averages() -> None:
     avg = peer_example()["market"]["avg_peer_price"]
     assert avg == pytest.approx(14.9, **APPROX)
     assert avg != pytest.approx(14.75, abs=1e-6)

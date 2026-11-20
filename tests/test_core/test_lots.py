@@ -1,4 +1,4 @@
-"""Black-box tests for section 05 (stock): ``app/core/lots.py``."""
+"""Black-box tests for the stock (spec 3): ``app/core/lots.py``."""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def ref_guide(day: int, fresh: int, max_days: int) -> list[dict]:
     return rows
 
 
-# --------------------------------------------------------------- hazard (AC 1)
+# ---------------------------------------------------------------------- hazard
 
 
 def test_hazard_plain_table() -> None:
@@ -127,7 +127,7 @@ def test_hazard_exact_cases_and_bounds(fresh: int, ramp: int, q0: int, age: int)
     assert hazard(age + 1, fresh, max_days, q0) >= h
 
 
-# ------------------------------------------- quality / days_left / guide (AC 1)
+# -------------------------------------------------- quality / days_left / guide
 
 
 def test_quality_and_days_left_spec_example() -> None:
@@ -217,7 +217,7 @@ def test_lot_payload_round_trip() -> None:
     assert Lot.from_payload(json.loads(json.dumps(payload))) == lot
 
 
-# ------------------------------------------------- add / insert / take (AC 8a)
+# --------------------------------------------------------- add / insert / take
 
 
 def test_add_appends_newest_last_and_total() -> None:
@@ -254,7 +254,7 @@ def test_add_insert_reject_duplicate_id(method: str) -> None:
 
 
 def test_insert_between_equal_age_and_younger() -> None:
-    """Failure mode 11: a bought lot of age 1 goes between L4 and L5."""
+    """A bought lot of age 1 goes between L4 and L5."""
     c = Cellar([mk("L4", 5, age=1), mk("L5", 8, age=0)])
     c.insert(mk("B5-1", 3, age=1))
     assert ids(c) == ["L4", "B5-1", "L5"]
@@ -317,11 +317,11 @@ def test_take_is_all_or_nothing(lot_id: str, qty: int) -> None:
     assert c.to_payload() == before
 
 
-# ------------------------------------------------------------ consume (AC 2, 3)
+# ---------------------------------------------------------------------- consume
 
 
 def test_consume_is_fifo_spec_example() -> None:
-    """Failure mode 1: LIFO selling would leave L0 with 20 units and L1 with 5."""
+    """LIFO selling would leave L0 with 20 units and L1 with 5."""
     c = Cellar([mk("L0", 20, 1, 12.0, 100), mk("L1", 30, 0, 13.4, 90)])
     c.consume(25)
     assert [(lot.id, lot.qty) for lot in c.lots] == [("L1", 25)]
@@ -376,7 +376,7 @@ def test_consume_property_fifo_and_total(quantities: list[int], data: st.DataObj
     assert [(lot.id, lot.qty) for lot in c.lots] == expected
 
 
-# ---------------------------------------------------------- conserve (AC 4, 5)
+# -------------------------------------------------------------------- conserve
 
 
 def test_conserve_spec_example() -> None:
@@ -411,7 +411,7 @@ def test_conserve_empty_list_returns_zero_and_changes_nothing() -> None:
 
 
 def test_conserve_keeps_ramp_length() -> None:
-    """Failure mode 3: extending only fresh_days (or only max_days) breaks this."""
+    """Extending only fresh_days (or only max_days) breaks this."""
     c = Cellar([mk("L3", 12, 3)])
     c.conserve(["L3"], 2)
     lot = c.get("L3")
@@ -428,7 +428,6 @@ def test_conserve_keeps_ramp_length() -> None:
 
 
 def test_conserve_partial_failure_changes_nothing() -> None:
-    """Failure mode 4."""
     c = Cellar([mk("L3", 12, 2), mk("L4", 5, 1)])
     before = c.to_payload()
     with pytest.raises(ValueError):
@@ -454,14 +453,13 @@ def test_conserved_lot_cannot_be_conserved_again() -> None:
 
 
 def test_conserve_never_lifts_above_initial_quality() -> None:
-    """Failure mode 10."""
     c = Cellar([mk("L3", 12, 2, q0=90)])
     c.conserve(["L3"], 2)
     assert c.view(5)[0]["quality"] == 90
     assert c.get("L3").quality() == 90  # type: ignore[union-attr]
 
 
-# ------------------------------------------------------- nightly_spoil (AC 6, 7)
+# ----------------------------------------------------------------- nightly_spoil
 
 
 def ref_spoil(lots: list[Lot], rng: random.Random) -> tuple[int, list[tuple]]:
@@ -510,7 +508,6 @@ def test_spoil_certain_lot_consumes_no_draw() -> None:
 
 
 def test_spoil_mixed_p0_p1_consumes_zero_draws() -> None:
-    """Failure mode 5."""
     rng = random.Random(21)
     first = random.Random(21).random()
     c = Cellar([mk("OLD", 50, 3), mk("NEW", 50, 0)])
@@ -531,7 +528,6 @@ def test_spoil_draw_count_is_one_per_unit_at_risk_only() -> None:
 
 
 def test_spoil_certain_below_max_days_removed_without_draw() -> None:
-    """Failure mode 9."""
     assert hazard(3, 1, 4, 60) == 1.0
     rng = random.Random(5)
     first = random.Random(5).random()
@@ -542,7 +538,7 @@ def test_spoil_certain_below_max_days_removed_without_draw() -> None:
 
 
 def test_spoil_evaluates_hazard_at_new_age() -> None:
-    """Failure mode 2: hazard at the old age would spoil none of age 1 here."""
+    """Hazard at the old age would spoil none of age 1 here."""
     c = Cellar([mk("L0", 300, 1)])
     r = random.Random(11)
     expected = sum(1 for _ in range(300) if r.random() < THIRD)
@@ -561,7 +557,7 @@ def test_spoil_evaluates_hazard_at_new_age() -> None:
 
 
 def test_spoil_ignores_initial_quality_bug() -> None:
-    """Failure mode 8: a 60% lot risks 40% on night 1 and is gone after night 3."""
+    """A 60% lot risks 40% on night 1 and is gone after night 3."""
     c = Cellar([mk("L1", 1000, 0, q0=60)])
     assert c.lots[0].risk_tonight() == pytest.approx(0.4, abs=1e-9)
     rng = random.Random(3)
@@ -577,7 +573,6 @@ def test_spoil_ignores_initial_quality_bug() -> None:
 
 
 def test_spoil_does_not_use_global_random() -> None:
-    """Failure mode 7."""
     results = []
     for global_seed in (1, 2, 3):
         random.seed(global_seed)
@@ -590,7 +585,6 @@ def test_spoil_does_not_use_global_random() -> None:
 
 
 def test_spoil_empty_lots_removed_everywhere() -> None:
-    """Failure mode 6."""
     c = Cellar([mk("GONE", 5, 3), mk("KEEP", 5, 0)])
     assert c.nightly_spoil(random.Random(0)) == 5
     assert ids(c) == ["KEEP"]
@@ -600,7 +594,7 @@ def test_spoil_empty_lots_removed_everywhere() -> None:
 
 
 def test_two_age_zero_lots_both_age_on_first_night() -> None:
-    """Acceptance criterion 10 (spec 3.2)."""
+    """Two age-0 lots both age on the first night (spec 3.2)."""
     c = Cellar([mk("L0", 20, 0, q0=100), mk("L1", 10, 0, q0=100)])
     assert ids(c) == ["L0", "L1"]
     assert c.total() == 30
@@ -666,7 +660,7 @@ def test_spoil_property_matches_draw_rule(specs: list[tuple], seed: int) -> None
     assert all(lot.qty > 0 and lot.age < lot.max_days for lot in c.lots)
 
 
-# ------------------------------------------------ expected_spoil_tonight (AC 6)
+# ------------------------------------------------------- expected_spoil_tonight
 
 
 def test_expected_spoil_rounded_to_two_decimals_from_unrounded_risks() -> None:
@@ -679,7 +673,7 @@ def test_expected_spoil_rounded_to_two_decimals_from_unrounded_risks() -> None:
     assert c.expected_spoil_tonight() == expected
 
 
-# ----------------------------------------------------------------- view (AC 8)
+# ------------------------------------------------------------------------ view
 
 
 def test_view_shape_and_roundings() -> None:
@@ -732,7 +726,7 @@ def test_view_empty() -> None:
     assert Cellar().stock_by_age() == []
 
 
-# --------------------------------------------------------- stock_by_age (AC 8)
+# ---------------------------------------------------------------- stock_by_age
 
 
 def test_stock_by_age_separates_plain_and_conserved() -> None:
@@ -780,7 +774,7 @@ def test_stock_by_age_weighted_average_of_unrounded_risks() -> None:
     assert row["conserved_risk_tonight"] is None
 
 
-# ----------------------------------------------------------------- payload (AC 9)
+# ------------------------------------------------------------------------ payload
 
 
 def test_cellar_payload_round_trip_keeps_every_field_and_order() -> None:

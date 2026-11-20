@@ -1,4 +1,4 @@
-"""Black-box tests for section 02 primitives (enums, limits, rng, sampling, money,
+"""Black-box tests for the primitives (enums, limits, rng, sampling, money,
 kernels) plus the whole-of-app/core import and global-RNG guards."""
 
 import json
@@ -34,7 +34,7 @@ CASES = json.loads((ROOT / "tests" / "fixtures" / "rounding_cases.json").read_te
 W = Weekday
 
 
-# ---- AC1 enums -------------------------------------------------------------
+# ---- enums -----------------------------------------------------------------
 def test_enum_values_are_wire_strings() -> None:
     assert [m.value for m in Weekday] == [
         "mon", "tue", "wed", "thu", "fri", "sat", "sun",
@@ -58,7 +58,7 @@ def test_weekdays_tuple_in_order() -> None:
     assert WEEKDAYS == (W.MON, W.TUE, W.WED, W.THU, W.FRI, W.SAT, W.SUN)
 
 
-# ---- AC2 limits ------------------------------------------------------------
+# ---- limits ----------------------------------------------------------------
 SPEC_LIMITS = {
     "MIN_PLAYERS_TO_START": 2,
     "MAX_PLAYERS": 12,
@@ -90,7 +90,7 @@ def test_limits_map_has_exactly_the_constants() -> None:
     assert set(limits.LIMITS) == set(SPEC_LIMITS)
 
 
-# ---- AC3 / FM7 rng ---------------------------------------------------------
+# ---- rng -------------------------------------------------------------------
 def test_stream_equals_seeded_random() -> None:
     a = stream(42, 3, "supply")
     b = random.Random("42:3:supply")
@@ -118,7 +118,7 @@ def test_stream_and_poisson_leave_global_random_untouched() -> None:
     assert [random.random() for _ in range(5)] == expected
 
 
-# ---- AC9 / FM1 halfup ------------------------------------------------------
+# ---- halfup ----------------------------------------------------------------
 @pytest.mark.parametrize(
     ("x", "out"),
     [(2.5, 3), (3.5, 4), (0.5, 1), (2.49, 2), (-0.5, 0), (-1.5, -1), (0.0, 0)],
@@ -129,7 +129,7 @@ def test_halfup(x: float, out: int) -> None:
     assert type(result) is int
 
 
-# ---- AC8 poisson -----------------------------------------------------------
+# ---- poisson ---------------------------------------------------------------
 @pytest.mark.parametrize("lam", [7.5, 100.0])
 def test_poisson_mean_and_variance(lam: float) -> None:
     rng = random.Random(3)
@@ -171,7 +171,7 @@ def test_poisson_exact_reference_sequence() -> None:
         ]
 
 
-# ---- AC4 / FM6 money -------------------------------------------------------
+# ---- money -----------------------------------------------------------------
 @pytest.mark.parametrize("case", CASES)
 def test_round_cents_fixture(case: dict[str, float]) -> None:
     assert round_cents(case["value"]) == case["expected"]
@@ -219,7 +219,7 @@ def test_format_number() -> None:
     assert format_number(0) == "0"
 
 
-# ---- AC5/AC6 / FM2-4 kernels ----------------------------------------------
+# ---- kernels --------------------------------------------------------------
 def test_triangle_kernel() -> None:
     assert triangle_kernel(0, 0, 4) == 1.0
     assert triangle_kernel(1, 0, 4) == pytest.approx(0.75)
@@ -306,7 +306,7 @@ def test_inverted_window_raises() -> None:
         weekday_multipliers(W.SAT, W.THU)
 
 
-# ---- AC10 / AC11 purity guards --------------------------------------------
+# ---- purity guards --------------------------------------------------------
 CORE = ROOT / "app" / "core"
 FORBIDDEN_IMPORT = re.compile(
     r"^\s*(?:from|import)\s+app\.(config|services|sockets|db|api)\b", re.M
@@ -322,7 +322,7 @@ SECTION_MODULES = [
 
 
 @pytest.mark.parametrize("name", SECTION_MODULES)
-def test_section_modules_exist_and_do_not_import_outer_layers(name: str) -> None:
+def test_primitive_modules_exist_and_do_not_import_outer_layers(name: str) -> None:
     path = CORE / f"{name}.py"
     assert path.is_file()
     assert not FORBIDDEN_IMPORT.search(path.read_text())

@@ -1,4 +1,4 @@
-"""Black-box tests for the socket config update (section 15 3.5, criteria 6, 11)."""
+"""Black-box tests for the socket config update (spec 11.3)."""
 
 import copy
 from typing import Any
@@ -58,7 +58,7 @@ async def test_valid_update_sends_the_full_config_to_the_host_only(
 async def test_room_copy_skips_the_host_and_carries_config_public(
     world: World,
 ) -> None:
-    # Failure mode 7: a broadcast that reaches the host overwrites its full config.
+    # A broadcast that reaches the host would overwrite its full config.
     code, secret = await hosted(world, {"random_seed": 918273645})
     start = world.mark()
     await config_update(
@@ -230,7 +230,7 @@ async def test_lowering_max_players_below_the_seats_taken_removes_nobody(
     assert (await world.seat(code, "p4", 4))["alias"] == "P2"
 
 
-# ------------------------------------------------------- @guarded (criterion 11)
+# ---------------------------------------------------------------------- @guarded
 @aio
 @pytest.mark.parametrize("name", ["join_waiting", "join", "leave", "start_game"])
 async def test_lobby_handler_failures_become_join_error(

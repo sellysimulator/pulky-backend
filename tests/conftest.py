@@ -1,4 +1,4 @@
-"""Shared test doubles for every backend suite (section 01).
+"""Shared test doubles for every backend suite.
 
 The environment block comes first and runs before anything imports ``app``:
 environment variables take precedence over the dotenv file, so the suite

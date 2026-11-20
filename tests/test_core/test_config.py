@@ -1,4 +1,4 @@
-"""Black-box tests for app.core.defaults and config_models (plan 04, spec 9)."""
+"""Black-box tests for app.core.defaults and config_models (spec 9)."""
 
 import ast
 import copy
@@ -112,7 +112,7 @@ SPEC_DEFAULTS: dict[str, Any] = {
 
 SEED_MAX = 2**53 - 1
 
-# (path, type, min, max, min_exclusive, nullable, players): plan 04 section 3.1
+# (path, type, min, max, min_exclusive, nullable, players), per spec 9.1
 EXPECTED_SPECS: list[tuple[str, str, Any, Any, bool, bool, str]] = [
     ("max_players", "int", 2, MAX_PLAYERS, False, False, "not_shown"),
     ("duration_days", "int", MIN_DAYS, MAX_DAYS, False, False, "not_shown"),
@@ -276,7 +276,7 @@ def above(lo: Any, hi: Any) -> str:
 
 
 def expected_fee_warnings(cfg: GameConfig) -> list[tuple[str, str]]:
-    """Plan 04 section 3.3 written from the spec, using section 08's functions."""
+    """Fee warnings of spec 9.2, written from the spec with the insurance functions."""
     d = cfg.to_dict()
     out = []
     for tier in (CIP, DAP, DDP):
@@ -365,7 +365,7 @@ def custom_config() -> GameConfig:
 
 
 # --------------------------------------------------------------------------- #
-# Criterion 1: defaults
+# Defaults
 # --------------------------------------------------------------------------- #
 
 
@@ -428,7 +428,7 @@ def test_from_host_input_empty_patch_is_the_defaults() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Criterion 2: frozen models
+# Frozen models
 # --------------------------------------------------------------------------- #
 
 
@@ -488,7 +488,7 @@ def test_extra_keys_are_forbidden_in_from_dict() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Criterion 3: worked examples
+# Worked examples
 # --------------------------------------------------------------------------- #
 
 EXAMPLE_ERRORS: list[tuple[dict, str, str]] = [
@@ -671,11 +671,11 @@ def test_config_error_is_an_exception_with_field_and_message() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Criterion 4/7: bounds and types; failure modes 1, 5, 10
+# Bounds and types
 # --------------------------------------------------------------------------- #
 
 
-def test_field_specs_match_the_section_table() -> None:
+def test_field_specs_match_the_expected_table() -> None:
     assert all(isinstance(s, FieldSpec) for s in FIELD_SPECS)
     assert [s.path for s in FIELD_SPECS] == EXPECTED_PATHS
     for spec, row in zip(FIELD_SPECS, EXPECTED_SPECS, strict=True):
@@ -916,7 +916,7 @@ def test_valid_input_is_never_altered(
 
 
 # --------------------------------------------------------------------------- #
-# Criterion 5/6: merging, current unchanged, error order; failure modes 2, 6, 8, 9
+# Merging, current unchanged, error order
 # --------------------------------------------------------------------------- #
 
 
@@ -1216,7 +1216,7 @@ def test_all_error_messages_are_nonempty_strings_with_field() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Warnings; failure mode 7
+# Warnings
 # --------------------------------------------------------------------------- #
 
 
@@ -1369,7 +1369,7 @@ def test_default_config_has_no_warnings() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Criterion 8: config_public; failure modes 3, 4, 4a
+# config_public
 # --------------------------------------------------------------------------- #
 
 
@@ -1486,7 +1486,7 @@ def test_config_public_returns_a_copy() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Criterion 9: config_schema
+# config_schema
 # --------------------------------------------------------------------------- #
 
 
@@ -1550,7 +1550,7 @@ def test_config_schema_is_json_serialisable() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Criterion 10, 11: round trip and tier terms
+# Round trip and tier terms
 # --------------------------------------------------------------------------- #
 
 
@@ -1620,7 +1620,7 @@ def test_format_helpers_agree_with_message_copy() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Criterion 12: purity of the modules
+# Purity of the modules
 # --------------------------------------------------------------------------- #
 
 

@@ -1,7 +1,7 @@
 # ruff: noqa: F811
-"""Black-box redaction tests for the play loop (plan section 16, 3.5; criteria 8, 14).
+"""Black-box redaction tests for the play loop (spec 11.1).
 
-Failure modes 2, 9 and 10. One day of real peer trades is played with explicit
+One day of real peer trades is played with explicit
 numbers: P1 orders far more than the supplier ships, holds buy limits of
 $23.17, and buys one unit from P2 at $17.43 and one from P3 at $18.91; P4 sits
 the day out. The two prices are the only way the test can tell a leaked trade
@@ -171,7 +171,7 @@ async def test_the_scenario_produces_two_public_trades_and_a_public_average(
     assert (await world.room(game.code))["engine"] is not None
 
 
-# ------------------------------------------------------ decisions (FM 2)
+# ------------------------------------------------------------- decisions
 @aio
 async def test_a_decision_never_appears_on_a_room_broadcast(world: World) -> None:
     game = await world.running_game(PEER_PATCH, players=4)
@@ -210,7 +210,7 @@ async def test_a_decision_never_appears_on_a_room_broadcast(world: World) -> Non
             assert not contains_value(payload, BIG_ORDER)
 
 
-# ------------------------------------------------------- prices (FM 9)
+# -------------------------------------------------------------- prices
 @aio
 async def test_trade_prices_stay_off_the_room_and_reach_the_parties(
     world: World,
@@ -236,7 +236,7 @@ async def test_trade_prices_stay_off_the_room_and_reach_the_parties(
     assert "peer_trades" not in public
 
 
-# --------------------------------------------------- buy limits (FM 10)
+# ----------------------------------------------------------- buy limits
 @aio
 async def test_the_buyers_limits_reach_neither_the_room_nor_the_sellers(
     world: World,
@@ -270,7 +270,7 @@ async def test_the_buyer_never_receives_a_sellers_offer(world: World) -> None:
         assert not contains_key(payload, "max_units")
 
 
-# ---------------------------------------------------------- AC 14
+# ---------------------------------------- each party's own trades
 @aio
 async def test_each_party_sees_its_own_trades_with_the_other_partys_alias(
     world: World,
@@ -339,7 +339,7 @@ async def test_no_third_players_payload_contains_either_trade(world: World) -> N
                 assert all(t["counterparty"] != other for t in trades)
 
 
-# --------------------------------------------------------------- AC 8 (day)
+# ------------------------------------------------------- secrets over a day
 @aio
 async def test_a_day_of_trades_leaks_no_secret_config_or_cellar_detail(
     world: World,

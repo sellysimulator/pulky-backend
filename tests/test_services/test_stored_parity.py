@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""Live/stored parity (section 18 AC 6, spec 13.12): ``build_stats`` over a
+"""Live/stored parity (spec 13.12): ``build_stats`` over a
 stored game equals ``engine.standings()`` exactly, peer stats and series included.
 """
 
@@ -42,7 +42,7 @@ def parity(engine: PulkyEngine, factory: Callable[[], Session], db: Session) -> 
     return rebuilt
 
 
-def test_ac6_parity_for_a_game_that_ended_naturally(
+def test_parity_for_a_game_that_ended_naturally(
     factory: Callable[[], Session], db_session: Session
 ) -> None:
     engine = play_peer_game(seed=11)
@@ -61,7 +61,7 @@ def test_ac6_parity_for_a_game_that_ended_naturally(
     assert p1["final_settlement"] == engine.settlements()["P1"].to_payload()
 
 
-def test_ac6_parity_for_a_game_ended_early(
+def test_parity_for_a_game_ended_early(
     factory: Callable[[], Session], db_session: Session
 ) -> None:
     engine = play_peer_game(seed=11, early=True)
@@ -71,13 +71,13 @@ def test_ac6_parity_for_a_game_ended_early(
 
 
 @pytest.mark.parametrize("seed", [3, 5])
-def test_ac6_parity_across_seeds(
+def test_parity_across_seeds(
     seed: int, factory: Callable[[], Session], db_session: Session
 ) -> None:
     parity(play_peer_game(seed=seed), factory, db_session)
 
 
-def test_ac6_parity_when_the_peer_market_is_off(
+def test_parity_when_the_peer_market_is_off(
     factory: Callable[[], Session], db_session: Session
 ) -> None:
     engine = play_peer_game(peer_enabled=False)
@@ -87,7 +87,7 @@ def test_ac6_parity_when_the_peer_market_is_off(
     assert set(rebuilt["market"]["series"]["peer_avg_price"]) == {None}
 
 
-def test_ac6_parity_for_a_full_table_of_twelve_players(
+def test_parity_for_a_full_table_of_twelve_players(
     factory: Callable[[], Session], db_session: Session
 ) -> None:
     rebuilt = parity(play_big_game(players=12, days=20), factory, db_session)

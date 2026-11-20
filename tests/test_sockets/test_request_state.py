@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""Black-box tests for request_state (plan section 16, 3.2; criterion 6)."""
+"""Black-box tests for request_state (spec 12.1, 12.6)."""
 
 from typing import Any
 

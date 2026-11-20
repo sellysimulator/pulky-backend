@@ -1,4 +1,4 @@
-"""Black-box tests for section 06 clear_peer_market (spec 5.7)."""
+"""Black-box tests for clear_peer_market (spec 5.7)."""
 
 import copy
 import random
@@ -83,7 +83,7 @@ def _quality_offers() -> dict[str, Offer]:
 
 
 def test_quality_before_price_then_cheapest_then_days_left() -> None:
-    """Failure mode 8: a price-first matcher buys P3's $12 units before P2's
+    """A price-first matcher buys P3's $12 units before P2's
     90% units."""
     got = _clear(
         {"P1": Bid(12, 2500, 50, BIG)}, _quality_offers(), ["P1", "P2", "P3", "P4"]
@@ -97,7 +97,7 @@ def test_quality_before_price_then_cheapest_then_days_left() -> None:
 
 
 def test_cash_skips_unaffordable_offer_and_buys_cheaper() -> None:
-    """Failure mode 9: a matcher that breaks at the first unaffordable offer
+    """A matcher that breaks at the first unaffordable offer
     buys nothing."""
     got = _clear(
         {"P1": Bid(5, 2000, 0, 1000)},
@@ -120,7 +120,7 @@ def test_buyer_order_larger_shortfall_first_and_never_from_itself() -> None:
 
 
 def test_higher_max_price_served_first_regardless_of_insertion_order() -> None:
-    """Failure mode 7: join-order buyers."""
+    """Buyers are never served in join order."""
     offers = {"P3": Offer(1000, 5, (OfferLot("L1", 5, 70, 2),))}
     aliases = ["P1", "P2", "P3"]
     lo = Bid(5, 1000, 0, BIG)
@@ -156,7 +156,7 @@ def test_equal_budget_ties_use_the_seeded_draw() -> None:
 
 
 def test_seller_cap_applies_across_buyers() -> None:
-    """Failure mode 10: max_units 5, two buyers wanting 4: the second gets 1."""
+    """With max_units 5, two buyers wanting 4: the second gets 1."""
     offers = {"P3": Offer(1000, 5, (OfferLot("L1", 10, 70, 2),))}
     bids = {"P1": Bid(4, 2000, 0, BIG), "P2": Bid(4, 1500, 0, BIG)}
     for b in (bids, dict(reversed(list(bids.items())))):
@@ -179,7 +179,7 @@ def test_seller_cap_spans_lots_of_one_seller() -> None:
 
 
 def test_self_trade_never_happens() -> None:
-    """Failure mode 11: P1 offers the best and cheapest lot and also buys."""
+    """P1 offers the best and cheapest lot and also buys."""
     bids = {"P1": Bid(5, 3000, 0, BIG)}
     offers = {
         "P1": Offer(100, 50, (OfferLot("L1", 50, 100, 5),)),
@@ -193,7 +193,7 @@ def test_self_trade_never_happens() -> None:
 
 
 def test_zero_cash_buys_nothing_and_cash_caps_units() -> None:
-    """Failure mode 12 (spec 14 #23)."""
+    """Spec 14 #23: purchases are capped by the cash held."""
     offers = {"P2": Offer(1, 100, (OfferLot("L1", 100, 90, 3),))}
     assert _clear({"P1": Bid(10, 5000, 0, 0)}, offers, ["P1", "P2"]) == []
     got = _clear(

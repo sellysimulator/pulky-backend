@@ -1,4 +1,4 @@
-"""Black-box tests for section 11: ``PulkyEngine.start`` and ``brief`` (spec 4.2)."""
+"""Black-box tests for ``PulkyEngine.start`` and ``brief`` (spec 4.2)."""
 
 import copy
 
@@ -209,7 +209,7 @@ def test_initial_pipeline_arrives_free_at_quality_max():
     assert lots["L0"]["initial_quality"] == 90
     out3 = play(e)
     assert out3.records["P1"].delivered == 0
-    # AC 16: nothing but sales, salvage and holding/backlog costs touches cash
+    # nothing but sales, salvage and holding/backlog costs touches cash
     for out in (out1, out2, out3):
         for rec in out.records.values():
             for line in (

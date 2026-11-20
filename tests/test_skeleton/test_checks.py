@@ -1,4 +1,4 @@
-"""Startup checks (spec 13.2, 13.3): AC5, AC6, AC7, failure mode 7."""
+"""Startup checks (spec 13.2, 13.3)."""
 
 import logging
 from collections.abc import Iterator
@@ -66,7 +66,7 @@ def test_configured_auth_logs_active_and_no_critical(
 def test_lifespan_client_observes_the_auth_check_but_plain_client_does_not(
     caplog: pytest.LogCaptureFixture, client: TestClient
 ) -> None:
-    """Failure mode 7: the bare client skips startup."""
+    """The bare client skips startup."""
     caplog.set_level(logging.DEBUG)
     client.get("/api/v1/health")
     assert not [r for r in caplog.records if r.levelno == logging.CRITICAL]

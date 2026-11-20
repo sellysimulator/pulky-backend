@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""Black-box tests for section 19: attaching guest games to an account."""
+"""Black-box tests for attaching guest games to an account."""
 
 from collections.abc import Callable
 from typing import Any
@@ -84,7 +84,7 @@ def user_id_of(db: Session, uid: str) -> int | None:
 
 
 @pytest.mark.dbschema
-def test_ac5_claim_attaches_every_guest_row_and_rebuilds_stats(
+def test_claim_attaches_every_guest_row_and_rebuilds_stats(
     api: TestClient,
     factory: Callable[[], Session],
     db_session: Session,
@@ -122,7 +122,7 @@ def test_ac5_claim_attaches_every_guest_row_and_rebuilds_stats(
 
 
 @pytest.mark.dbschema
-def test_ac5_claim_is_idempotent(
+def test_claim_is_idempotent(
     api: TestClient,
     factory: Callable[[], Session],
     db_session: Session,
@@ -154,7 +154,7 @@ def test_claiming_nothing_is_a_valid_answer(
 
 
 @pytest.mark.dbschema
-def test_fm5_a_row_that_already_has_a_user_is_never_touched(
+def test_a_row_that_already_has_a_user_is_never_touched(
     api: TestClient,
     factory: Callable[[], Session],
     db_session: Session,
@@ -212,7 +212,7 @@ def test_second_account_cannot_claim_what_the_first_already_claimed(
 
 
 @pytest.mark.dbschema
-def test_fm4_the_uid_comes_from_the_token_never_from_the_request(
+def test_the_uid_comes_from_the_token_never_from_the_request(
     api: TestClient,
     factory: Callable[[], Session],
     db_session: Session,
@@ -320,7 +320,7 @@ def test_the_service_counts_rows_claimed(
 
 
 @pytest.mark.dbschema
-def test_ac3_a_claim_answer_carries_nothing_but_the_count(
+def test_a_claim_answer_carries_nothing_but_the_count(
     api: TestClient,
     factory: Callable[[], Session],
     firebase_tokens: dict[str, Any],
@@ -337,7 +337,7 @@ def test_ac3_a_claim_answer_carries_nothing_but_the_count(
     assert_no_secrets(dict(res.headers), [*secrets_of(room), "uid-claimer"])
 
 
-# --------------------------------------------------- auth (AC 6)
+# ---------------------------------------------------------- auth
 
 
 @pytest.mark.parametrize(

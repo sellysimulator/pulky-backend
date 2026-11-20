@@ -1,4 +1,4 @@
-"""Black-box tests for app.core.insurance (plan 08, spec section 6.3-6.4)."""
+"""Black-box tests for app.core.insurance (spec section 6.3-6.4)."""
 
 import pytest
 
@@ -119,7 +119,7 @@ def test_refund_value_example():
     assert [15 * _refund(t) for t in (EXW, CIP, DAP, DDP)] == [0, 195, 210, 450]
 
 
-def test_fm4_dap_refund_is_arrival_spot_not_paid():
+def test_dap_refund_is_arrival_spot_not_paid():
     assert _refund(DAP) == 14
     assert _refund(DAP) != _refund(CIP)
 
@@ -234,7 +234,7 @@ def test_plan_rows_no_risk_keys():
                 assert banned not in key
 
 
-def test_fm5_no_failure_odds_value_in_plan_rows():
+def test_no_failure_odds_value_in_plan_rows():
     # spec 9.3: the secret p and L must never reach the player panel.
     p, loss = 0.137, 0.271
     tiers = {
@@ -309,7 +309,7 @@ def test_ratio_badge_examples():
     assert ratio_badge(0.40, 0.0) == "no_risk"
 
 
-def test_fm6_badge_boundaries():
+def test_badge_boundaries():
     assert ratio_badge(0.95, 1.0) == "break_even"
     assert ratio_badge(1.05, 1.0) == "break_even"
     assert ratio_badge(0.9499, 1.0) == "worth_it"
