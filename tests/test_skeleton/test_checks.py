@@ -110,21 +110,27 @@ def test_build_state_backend_returns_the_right_kind() -> None:
     assert callable(redis_backend.get) and callable(redis_backend.lock)
 
 
-def test_db_tls_check_warns_only_when_ssl_is_off(
+def _tls_warnings(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return _records(caplog, logging.WARNING, "ssl") + _records(
+        caplog, logging.WARNING, "tls"
+    )
+
+
+def test_db_tls_check_is_silent_only_when_the_certificate_is_verified(
     caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     caplog.set_level(logging.DEBUG)
-    patch_settings(monkeypatch, DB_REQUIRE_SSL=True)
+    patch_settings(monkeypatch, DB_REQUIRE_SSL=True, DB_SSL_CA="/etc/ca.pem")
     run_startup_checks()
-    assert not _records(caplog, logging.WARNING, "ssl") + _records(
-        caplog, logging.WARNING, "tls"
-    )
+    assert not _tls_warnings(caplog)
     caplog.clear()
-    patch_settings(monkeypatch, DB_REQUIRE_SSL=False)
+    patch_settings(monkeypatch, DB_REQUIRE_SSL=True, DB_SSL_CA="")
     run_startup_checks()
-    assert _records(caplog, logging.WARNING, "ssl") or _records(
-        caplog, logging.WARNING, "tls"
-    )
+    assert any("verify" in r.getMessage() for r in _tls_warnings(caplog))
+    caplog.clear()
+    patch_settings(monkeypatch, DB_REQUIRE_SSL=False, DB_SSL_CA="")
+    run_startup_checks()
+    assert any("not required" in r.getMessage() for r in _tls_warnings(caplog))
 
 
 @pytest.fixture

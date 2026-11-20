@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.engine import PulkyEngine
 from app.core.stats import build_stats
-from tests.fixtures.mysql import db_session, mysql_url  # noqa: F401
+from tests.fixtures.postgres import db_session, pg_url  # noqa: F401
 from tests.test_services.test_persistence import (
     db_engine,  # noqa: F401
     factory,  # noqa: F401

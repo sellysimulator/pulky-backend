@@ -41,7 +41,7 @@ SECRET_PATTERNS = [
     re.compile(r'"private_key"\s*:'),
     re.compile(r'"type"\s*:\s*"service_account"'),
     re.compile(r"(?i)\bpassword\s*[:=]\s*\S{4,}"),
-    re.compile(r"mysql\+?\w*://\S+:\S+@"),
+    re.compile(r"postgres(ql)?(\+\w+)?://\S+:\S+@"),
     re.compile(r"rediss?://\S+:\S+@"),
     re.compile(r"AIza[0-9A-Za-z_\-]{30,}"),
 ]
@@ -116,6 +116,17 @@ def test_render_yaml_exists_and_parses() -> None:
 
 def test_render_yaml_meets_section_20_contract() -> None:
     assert check_render(load_yaml(RENDER)) == []
+
+
+def test_the_secret_patterns_catch_a_database_url_with_credentials() -> None:
+    leaks = [
+        "postgresql+psycopg://pulky:s3cret@db.example:5432/pulky",
+        "postgres://avnadmin:s3cret@pg-pulky.aivencloud.com:12345/defaultdb",
+        "postgresql://u:p@h/db",
+    ]
+    for leak in leaks:
+        assert any(p.search(leak) for p in SECRET_PATTERNS), leak
+    assert not any(p.search("postgresql+psycopg://host/db") for p in SECRET_PATTERNS)
 
 
 def test_render_yaml_has_no_secret_value_anywhere() -> None:

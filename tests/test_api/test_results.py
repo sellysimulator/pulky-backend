@@ -1,11 +1,11 @@
 # ruff: noqa: F811
-"""Black-box tests for section 19: the results routes (all against MySQL).
+"""Black-box tests for section 19: the results routes (all against PostgreSQL).
 
 This module also owns the builders and fixtures the other section 19 test
 modules import (``test_export``, ``test_claim``, ``test_users``). Every game is
 played with section 11's engine, put into a finished room document and persisted
 by section 18's ``persist_finished_game`` through a ``session_factory`` bound to
-section 17's Testcontainers MySQL, never the default ``SessionLocal``.
+section 17's Testcontainers PostgreSQL, never the default ``SessionLocal``.
 """
 
 import asyncio
@@ -41,7 +41,7 @@ from app.services.state_service import (
     new_room_document,
     reset_state_service,
 )
-from tests.fixtures.mysql import db_session, mysql_url  # noqa: F401
+from tests.fixtures.postgres import db_session, pg_url  # noqa: F401
 
 pytestmark = pytest.mark.dbschema
 
@@ -222,8 +222,8 @@ def assert_no_secrets(body: Any, secrets: list[str]) -> None:
 
 
 @pytest.fixture()
-def db_engine(mysql_url: str) -> Iterator[Engine]:
-    engine = create_engine(mysql_url)
+def db_engine(pg_url: str) -> Iterator[Engine]:
+    engine = create_engine(pg_url)
     yield engine
     engine.dispose()
 

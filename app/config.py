@@ -1,8 +1,11 @@
 """Application settings (spec 13.2)."""
 
 import json
+import os
+import tempfile
 from functools import lru_cache
 from typing import Annotated, Any
+from urllib.parse import quote
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -25,12 +28,17 @@ class Settings(BaseSettings):
         "http://localhost:5173",
     ]
     DB_HOST: str = "localhost"
-    DB_PORT: int = 3306
-    DB_USER: str = "root"
+    DB_PORT: int = 5432
+    DB_USER: str = "postgres"
     DB_PASSWORD: str = ""
-    DB_DATABASE: str = "pulky"
+    DB_DATABASE: str = "pulkydb"
     DB_REQUIRE_SSL: bool = True
     DB_SSL_CA: str = ""
+    # Per instance at most 2 + 1 = 3 connections: one 20-connection PostgreSQL
+    # service is shared by four games (budget in DEPLOY.md). Raise both on a
+    # bigger plan.
+    DB_POOL_SIZE: int = 2
+    DB_MAX_OVERFLOW: int = 1
     REDIS_ENABLED: bool = False
     REDIS_URL: str = ""
     FIREBASE_SERVICE_ACCOUNT_JSON: str = ""
@@ -63,34 +71,39 @@ class Settings(BaseSettings):
 
     @property
     def db_url(self) -> str:
+        user = quote(self.DB_USER, safe="")
+        password = quote(self.DB_PASSWORD, safe="")
         return (
-            f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}"
+            f"postgresql+psycopg://{user}:{password}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_DATABASE}"
         )
 
     @property
     def db_connect_args(self) -> dict[str, Any]:
-        if not self.DB_REQUIRE_SSL:
-            return {}
-        return {"ssl": _ssl_args(self.DB_SSL_CA)}
+        """psycopg connection options: the session time zone is UTC, and TLS is
+        verified against this project's CA when one is given (``verify-full``),
+        else only required (``require``: encrypted, not verified)."""
+        args: dict[str, Any] = {"options": "-c timezone=UTC"}
+        if self.DB_SSL_CA:
+            args |= {"sslmode": "verify-full", "sslrootcert": _ca_file(self.DB_SSL_CA)}
+        elif self.DB_REQUIRE_SSL:
+            args |= {"sslmode": "require"}
+        return args
 
 
-def _ssl_args(ca: str) -> dict[str, Any]:
-    """PyMySQL ``ssl`` options: the system trust store, or this project's CA."""
-    if not ca:
-        return {"check_hostname": False}
-    import os
-    import tempfile
-
-    if os.path.isfile(ca):
-        return {"ca": ca, "check_hostname": True}
+@lru_cache
+def _ca_file(ca: str) -> str:
+    """A path to the CA certificate: ``ca`` itself, or the PEM text written once to
+    a temporary file (psycopg takes a file path, never the certificate text)."""
     pem = ca.replace("\\n", "\n")
-    if "BEGIN CERTIFICATE" not in pem:
-        raise ValueError("DB_SSL_CA is neither a PEM certificate nor a path to one")
-    handle, path = tempfile.mkstemp(suffix=".pem")
-    with os.fdopen(handle, "w") as fh:
-        fh.write(pem)
-    return {"ca": path, "check_hostname": True}
+    if "-----BEGIN" in pem:
+        handle, path = tempfile.mkstemp(suffix=".pem")
+        with os.fdopen(handle, "w") as fh:
+            fh.write(pem)
+        return path
+    if os.path.isfile(ca):
+        return ca
+    raise ValueError("DB_SSL_CA is neither a PEM certificate nor a path to one")
 
 
 @lru_cache

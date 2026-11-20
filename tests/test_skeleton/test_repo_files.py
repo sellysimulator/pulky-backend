@@ -20,7 +20,7 @@ RUNTIME_PINS = {
     "pydantic": "2.13.5",
     "pydantic-settings": "2.15.0",
     "sqlalchemy": "2.0.54",
-    "pymysql": "1.2.3",
+    "psycopg[binary]": "3.3.9",
     "alembic": "1.20.0",
     "firebase-admin": "7.6.0",
     "python-dotenv": "1.2.3",
@@ -36,7 +36,7 @@ DEV_PINS = {
     "black": "26.5.1",
     "ruff": "0.16.8",
     "mypy": "2.3.1",
-    "testcontainers[mysql]": "4.15.0",
+    "testcontainers[postgres]": "4.15.0",
 }
 
 
@@ -182,6 +182,8 @@ ENV_VARS = [
     "DB_DATABASE",
     "DB_REQUIRE_SSL",
     "DB_SSL_CA",
+    "DB_POOL_SIZE",
+    "DB_MAX_OVERFLOW",
     "REDIS_ENABLED",
     "REDIS_URL",
     "FIREBASE_SERVICE_ACCOUNT_JSON",

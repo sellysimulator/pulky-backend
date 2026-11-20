@@ -1,15 +1,22 @@
 # ruff: noqa: F811
 """Schema of spec 13.5 as migrated (section 17): AC1, AC2, AC3, AC8, FM2, FM3, FM5."""
 
+from pathlib import Path
 from typing import Any
 
 import pytest
+from alembic.autogenerate import compare_metadata
+from alembic.runtime.migration import MigrationContext
 from alembic.util.exc import CommandError
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from alembic import command
-from tests.fixtures.mysql import alembic_config, mysql_url  # noqa: F401
+from tests.fixtures.postgres import (  # noqa: F401
+    alembic_config,
+    pg_container,
+    pg_url,
+)
 
 pytestmark = pytest.mark.dbschema
 
@@ -89,48 +96,81 @@ ALL_TABLES = {
 
 
 @pytest.fixture()
-def engine(mysql_url: str) -> Any:  # noqa: F811
-    eng = create_engine(mysql_url)
+def engine(pg_url: str) -> Any:  # noqa: F811
+    eng = create_engine(pg_url)
     yield eng
     eng.dispose()
+
+
+def _column_type(
+    data_type: str, length: int | None, precision: int | None, scale: int | None
+) -> str:
+    """``data_type`` with its length or precision, as ``format_type`` prints it."""
+    if length is not None:
+        return f"{data_type}({length})"
+    if data_type == "numeric" and precision is not None:
+        return f"numeric({precision},{scale})"
+    return data_type
 
 
 def columns(engine: Engine, table: str) -> dict[str, dict[str, Any]]:
     with engine.connect() as conn:
         rows = conn.execute(
             text(
-                "SELECT COLUMN_NAME, COLUMN_TYPE, DATA_TYPE, IS_NULLABLE, EXTRA "
-                "FROM information_schema.COLUMNS "
-                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t"
+                "SELECT column_name, data_type, character_maximum_length, "
+                "numeric_precision, numeric_scale, is_nullable, column_default "
+                "FROM information_schema.columns "
+                "WHERE table_schema = current_schema() AND table_name = :t"
             ),
             {"t": table},
         ).all()
     return {
-        r[0].lower() if isinstance(r[0], str) else r[0]: {
-            "type": str(r[1]).lower(),
-            "data_type": str(r[2]).lower(),
-            "nullable": r[3] == "YES",
-            "extra": str(r[4]).lower(),
+        r[0]: {
+            "type": _column_type(r[1], r[2], r[3], r[4]),
+            "data_type": r[1],
+            "nullable": r[5] == "YES",
+            "default": r[6] or "",
         }
         for r in rows
     }
 
 
-def indexes(engine: Engine, table: str) -> dict[str, tuple[bool, list[str]]]:
+def indexes(engine: Engine, table: str) -> dict[str, tuple[bool, bool, list[str]]]:
+    """index name -> (unique, primary, columns in index order)."""
     with engine.connect() as conn:
         rows = conn.execute(
             text(
-                "SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME FROM "
-                "information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() "
-                "AND TABLE_NAME = :t ORDER BY INDEX_NAME, SEQ_IN_INDEX"
+                "SELECT i.relname, x.indisunique, x.indisprimary, a.attname "
+                "FROM pg_index x "
+                "JOIN pg_class t ON t.oid = x.indrelid "
+                "JOIN pg_class i ON i.oid = x.indexrelid "
+                "JOIN pg_namespace n ON n.oid = t.relnamespace "
+                "CROSS JOIN LATERAL unnest(x.indkey::int2[]) "
+                "WITH ORDINALITY AS k(attnum, ord) "
+                "JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum "
+                "WHERE n.nspname = current_schema() AND t.relname = :t "
+                "ORDER BY i.relname, k.ord"
             ),
             {"t": table},
         ).all()
-    out: dict[str, tuple[bool, list[str]]] = {}
-    for name, non_unique, col in rows:
-        unique, cols = out.setdefault(name, (not non_unique, []))
-        cols.append(col)
+    out: dict[str, tuple[bool, bool, list[str]]] = {}
+    for name, unique, primary, col in rows:
+        out.setdefault(name, (unique, primary, []))[2].append(col)
     return out
+
+
+def primary_key(engine: Engine, table: str) -> list[str]:
+    (cols,) = [c for _, primary, c in indexes(engine, table).values() if primary]
+    return cols
+
+
+_DELETE_RULES = {
+    "a": "NO ACTION",
+    "r": "RESTRICT",
+    "c": "CASCADE",
+    "n": "SET NULL",
+    "d": "SET DEFAULT",
+}
 
 
 def foreign_keys(engine: Engine, table: str) -> dict[str, tuple[str, str, str]]:
@@ -138,26 +178,29 @@ def foreign_keys(engine: Engine, table: str) -> dict[str, tuple[str, str, str]]:
     with engine.connect() as conn:
         rows = conn.execute(
             text(
-                "SELECT k.COLUMN_NAME, k.REFERENCED_TABLE_NAME, "
-                "k.REFERENCED_COLUMN_NAME, r.DELETE_RULE "
-                "FROM information_schema.KEY_COLUMN_USAGE k "
-                "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
-                "ON r.CONSTRAINT_NAME = k.CONSTRAINT_NAME "
-                "AND r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA "
-                "WHERE k.TABLE_SCHEMA = DATABASE() AND k.TABLE_NAME = :t "
-                "AND k.REFERENCED_TABLE_NAME IS NOT NULL"
+                "SELECT a.attname, rt.relname, ra.attname, c.confdeltype "
+                "FROM pg_constraint c "
+                "JOIN pg_class t ON t.oid = c.conrelid "
+                "JOIN pg_namespace n ON n.oid = t.relnamespace "
+                "JOIN pg_class rt ON rt.oid = c.confrelid "
+                "JOIN pg_attribute a "
+                "ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1] "
+                "JOIN pg_attribute ra "
+                "ON ra.attrelid = c.confrelid AND ra.attnum = c.confkey[1] "
+                "WHERE c.contype = 'f' AND n.nspname = current_schema() "
+                "AND t.relname = :t"
             ),
             {"t": table},
         ).all()
-    return {r[0]: (r[1], r[2], r[3]) for r in rows}
+    return {r[0]: (r[1], r[2], _DELETE_RULES[r[3]]) for r in rows}
 
 
 def unique_column_sets(engine: Engine, table: str) -> list[list[str]]:
-    return [cols for unique, cols in indexes(engine, table).values() if unique]
+    return [cols for unique, _, cols in indexes(engine, table).values() if unique]
 
 
 def indexed_leading_columns(engine: Engine, table: str) -> set[str]:
-    return {cols[0] for _, cols in indexes(engine, table).values()}
+    return {cols[0] for _, _, cols in indexes(engine, table).values()}
 
 
 # --- AC1 / AC8 / FM5: columns -------------------------------------------------
@@ -176,16 +219,16 @@ def test_player_days_has_the_named_record_fields(engine: Engine, column: str) ->
     assert column in columns(engine, "player_days")
 
 
-def test_ids_are_bigint_autoincrement_except_user_stats(engine: Engine) -> None:
+def test_ids_are_bigserial_except_user_stats(engine: Engine) -> None:
     for table in ALL_TABLES:
         cols = columns(engine, table)
         if table == "user_stats":
             assert "id" not in cols
-            assert indexes(engine, table)["PRIMARY"][1] == ["user_id"]
+            assert primary_key(engine, table) == ["user_id"]
             continue
         assert cols["id"]["data_type"] == "bigint", table
-        assert "auto_increment" in cols["id"]["extra"], table
-        assert indexes(engine, table)["PRIMARY"][1] == ["id"], table
+        assert cols["id"]["default"].startswith("nextval("), table
+        assert primary_key(engine, table) == ["id"], table
 
 
 # --- column types -------------------------------------------------------------
@@ -209,8 +252,8 @@ MONEY = {
 def test_money_columns_are_decimal_12_2(
     engine: Engine, table: str, column: str
 ) -> None:
-    """Failure mode 3: money is DECIMAL(12,2), never FLOAT or DOUBLE."""
-    assert columns(engine, table)[column]["type"] == "decimal(12,2)"
+    """Failure mode 3: money is NUMERIC(12,2), never a binary floating point."""
+    assert columns(engine, table)[column]["type"] == "numeric(12,2)"
 
 
 DOUBLES = {
@@ -235,7 +278,7 @@ DOUBLES = {
     [(t, c) for t, cs in DOUBLES.items() for c in cs],
 )
 def test_ratio_columns_are_double(engine: Engine, table: str, column: str) -> None:
-    assert columns(engine, table)[column]["data_type"] == "double"
+    assert columns(engine, table)[column]["data_type"] == "double precision"
 
 
 @pytest.mark.parametrize(
@@ -284,47 +327,47 @@ def test_not_null_columns(engine: Engine, table: str, column: str) -> None:
 @pytest.mark.parametrize(
     ("table", "column", "column_type"),
     [
-        ("games", "public_id", "char(32)"),
-        ("games", "room_code", "char(6)"),
+        ("games", "public_id", "character(32)"),
+        ("games", "room_code", "character(6)"),
         ("games", "rng_seed", "bigint"),
-        ("games", "duration_days", "int"),
-        ("games", "ended_early", "tinyint(1)"),
-        ("games", "host_display_name", "varchar(24)"),
-        ("games", "started_at", "datetime"),
-        ("games", "finished_at", "datetime"),
-        ("participants", "alias", "varchar(4)"),
-        ("participants", "display_name", "varchar(24)"),
-        ("participants", "guest_identity", "varchar(64)"),
-        ("participants", "units_sold", "int"),
-        ("participants", "final_rank", "int"),
-        ("users", "firebase_uid", "varchar(128)"),
-        ("users", "display_name", "varchar(24)"),
-        ("users", "email", "varchar(320)"),
-        ("users", "photo_url", "varchar(1024)"),
+        ("games", "duration_days", "integer"),
+        ("games", "ended_early", "boolean"),
+        ("games", "host_display_name", "character varying(24)"),
+        ("games", "started_at", "timestamp with time zone"),
+        ("games", "finished_at", "timestamp with time zone"),
+        ("participants", "alias", "character varying(4)"),
+        ("participants", "display_name", "character varying(24)"),
+        ("participants", "guest_identity", "character varying(64)"),
+        ("participants", "units_sold", "integer"),
+        ("participants", "final_rank", "integer"),
+        ("users", "firebase_uid", "character varying(128)"),
+        ("users", "display_name", "character varying(24)"),
+        ("users", "email", "character varying(320)"),
+        ("users", "photo_url", "character varying(1024)"),
         ("game_configs", "config", "json"),
         ("player_days", "conserve_lots", "json"),
         ("player_days", "peer_trades", "json"),
         ("player_days", "peer_buy", "json"),
         ("player_days", "peer_sell", "json"),
-        ("player_days", "weekday", "varchar(3)"),
-        ("player_days", "incoterm", "varchar(3)"),
-        ("player_days", "alias", "varchar(4)"),
-        ("player_days", "cooperate", "tinyint(1)"),
-        ("player_days", "refrigeration_failure", "tinyint(1)"),
-        ("player_days", "sold", "int"),
-        ("market_days", "weekday", "varchar(3)"),
-        ("market_days", "disrupted", "tinyint(1)"),
-        ("market_days", "cooperation", "tinyint(1)"),
-        ("market_days", "refrigeration_failure", "tinyint(1)"),
-        ("market_days", "capacity", "int"),
-        ("user_stats", "games_played", "int"),
+        ("player_days", "weekday", "character varying(3)"),
+        ("player_days", "incoterm", "character varying(3)"),
+        ("player_days", "alias", "character varying(4)"),
+        ("player_days", "cooperate", "boolean"),
+        ("player_days", "refrigeration_failure", "boolean"),
+        ("player_days", "sold", "integer"),
+        ("market_days", "weekday", "character varying(3)"),
+        ("market_days", "disrupted", "boolean"),
+        ("market_days", "cooperation", "boolean"),
+        ("market_days", "refrigeration_failure", "boolean"),
+        ("market_days", "capacity", "integer"),
+        ("user_stats", "games_played", "integer"),
     ],
 )
 def test_column_types(
     engine: Engine, table: str, column: str, column_type: str
 ) -> None:
     actual = columns(engine, table)[column]["type"]
-    assert actual.startswith(column_type), (actual, column_type)
+    assert actual == column_type, (actual, column_type)
 
 
 # --- keys and indexes ---------------------------------------------------------
@@ -383,19 +426,78 @@ def test_user_stats_references_users(engine: Engine) -> None:
 # --- AC2 / AC3 / FM2: migration -----------------------------------------------
 
 
-def test_alembic_check_reports_no_drift(mysql_url: str) -> None:  # noqa: F811
+def test_alembic_check_reports_no_drift(pg_url: str) -> None:  # noqa: F811
     """Failure mode 2: a model column missing from the migration (or vice versa)."""
-    command.check(alembic_config(mysql_url))
+    command.check(alembic_config(pg_url))
 
 
-def test_alembic_check_detects_drift(mysql_url: str) -> None:  # noqa: F811
+def test_models_match_migrations(pg_url: str) -> None:  # noqa: F811
+    import app.models.game  # noqa: F401
+    import app.models.user  # noqa: F401
+    from app.models.base import Base
+
+    eng = create_engine(pg_url)
+    try:
+        with eng.connect() as conn:
+            diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)
+    finally:
+        eng.dispose()
+    assert diff == []
+
+
+SNAPSHOT = Path(__file__).resolve().parents[2] / "db" / "schema.postgres.sql"
+
+
+def normalize(dump: str) -> str:
+    """Drop everything in a pg_dump that varies between runs or pg_dump minors
+    (the rule of Novus ``scripts/db/gen_ddl.py``, which writes the snapshot).
+
+    Removed: comments, blank lines, session ``SET``/``set_config`` lines and the
+    ``\\restrict``/``\\unrestrict`` guard lines (random token, pg_dump >= 17.6).
+    """
+    keep = []
+    for line in dump.splitlines():
+        stripped = line.strip()
+        if (
+            not stripped
+            or stripped.startswith("--")
+            or stripped.startswith("\\restrict")
+            or stripped.startswith("\\unrestrict")
+            or stripped.startswith("SET ")
+            or stripped.startswith("SELECT pg_catalog.set_config")
+        ):
+            continue
+        keep.append(line.rstrip())
+    return "\n".join(keep) + "\n"
+
+
+def test_ddl_snapshot_matches_migrations(pg_container: Any) -> None:  # noqa: F811
+    """``db/schema.postgres.sql`` is the DDL ``alembic upgrade head`` produces;
+    regenerate it with ``scripts/db/gen_ddl.py`` after changing a migration."""
+    result = pg_container.exec(
+        [
+            "pg_dump",
+            "-U",
+            pg_container.username,
+            "-d",
+            pg_container.dbname,
+            "--schema-only",
+            "--no-owner",
+            "--no-privileges",
+        ]
+    )
+    assert result.exit_code == 0, result.output[-2000:]
+    assert normalize(result.output.decode()) == SNAPSHOT.read_text()
+
+
+def test_alembic_check_detects_drift(pg_url: str) -> None:  # noqa: F811
     """The drift check can fail: an extra column in the database is reported."""
-    eng = create_engine(mysql_url)
+    eng = create_engine(pg_url)
     try:
         with eng.begin() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN drift_probe INT NULL"))
         with pytest.raises(CommandError):
-            command.check(alembic_config(mysql_url))
+            command.check(alembic_config(pg_url))
     finally:
         with eng.begin() as conn:
             conn.execute(text("ALTER TABLE users DROP COLUMN drift_probe"))
@@ -403,18 +505,18 @@ def test_alembic_check_detects_drift(mysql_url: str) -> None:  # noqa: F811
 
 
 def test_downgrade_removes_everything_and_upgrade_restores(
-    mysql_url: str,  # noqa: F811
+    pg_url: str,  # noqa: F811
 ) -> None:
-    cfg = alembic_config(mysql_url)
-    eng = create_engine(mysql_url)
+    cfg = alembic_config(pg_url)
+    eng = create_engine(pg_url)
     try:
         command.downgrade(cfg, "base")
         with eng.connect() as conn:
             left = set(
                 conn.execute(
                     text(
-                        "SELECT TABLE_NAME FROM information_schema.TABLES "
-                        "WHERE TABLE_SCHEMA = DATABASE()"
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = current_schema()"
                     )
                 ).scalars()
             )

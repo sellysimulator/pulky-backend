@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from typing import Any, cast
 
 from sqlalchemy import Select, Table, case, func, select
-from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -67,11 +67,13 @@ def rebuild_user_stats(db: Session, user_ids: Iterable[int]) -> None:
         for row in rows
     ]
     if params:
-        # MySQL's upsert: a concurrent rebuild for the same user is last-writer-wins.
-        # On the Table, not the entity: the ORM bulk path drops None values per row.
-        upsert = mysql_insert(cast(Table, UserStats.__table__))
-        upsert = upsert.on_duplicate_key_update(
-            {name: upsert.inserted[name] for name in _STAT_COLUMNS}
+        # An upsert on the primary key: a concurrent rebuild for the same user is
+        # last-writer-wins. On the Table, not the entity: the ORM bulk path drops None
+        # values per row.
+        upsert = pg_insert(cast(Table, UserStats.__table__))
+        upsert = upsert.on_conflict_do_update(
+            index_elements=["user_id"],
+            set_={name: upsert.excluded[name] for name in _STAT_COLUMNS},
         )
         db.execute(upsert, params)
     db.commit()

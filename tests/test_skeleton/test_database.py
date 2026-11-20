@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import Column, Integer, create_engine, text
-from sqlalchemy.dialects import mysql
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -58,7 +58,7 @@ def test_timestamp_columns_carry_a_server_default(stamped_table: Any) -> None:
         column = stamped_table.c[name]
         assert column.server_default is not None, name
         assert column.nullable is False, name
-    ddl = str(CreateTable(stamped_table).compile(dialect=mysql.dialect()))
+    ddl = str(CreateTable(stamped_table).compile(dialect=postgresql.dialect()))
     for line in ddl.splitlines():
         if "created_at" in line or "updated_at" in line:
             assert "DEFAULT" in line
@@ -75,37 +75,36 @@ def test_a_raw_insert_without_timestamps_gets_them(stamped_table: Any) -> None:
     assert row[0] is not None and row[1] is not None
 
 
-def test_get_engine_is_lazy_cached_and_a_pymysql_engine() -> None:
+def test_get_engine_is_lazy_cached_and_a_psycopg_engine() -> None:
     engine = db_session.get_engine()
     assert isinstance(engine, Engine)
     assert db_session.get_engine() is engine
-    assert engine.url.drivername == "mysql+pymysql"
-    assert engine.pool.size() == 10  # type: ignore[attr-defined]
+    assert engine.url.drivername == "postgresql+psycopg"
+    # 2 + 1 per instance: Selly, Pulky and Beery 3 each, Lemony 4, plus a
+    # side-by-side deploy instance (at most 4) and alembic and psql (1 each)
+    # fit the shared 20-connection service (DEPLOY.md)
+    assert engine.pool.size() == 2  # type: ignore[attr-defined]
+    assert engine.pool._max_overflow == 1  # type: ignore[attr-defined]
+    pulky = engine.pool.size() + engine.pool._max_overflow  # type: ignore[attr-defined]
+    assert 2 * 3 + pulky + 4 + 4 + 2 <= 20
+    assert engine.pool.timeout() == 10  # type: ignore[attr-defined]
 
 
-def test_engine_sets_the_session_time_zone_to_utc_on_connect() -> None:
-    engine = db_session.get_engine()
-    executed: list[str] = []
+def test_engine_connects_with_the_session_time_zone_set_to_utc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The time zone travels in the startup packet (``options``), not in a
+    statement run on each new connection."""
+    seen: dict[str, Any] = {}
 
-    class Cursor:
-        def execute(self, sql: str, *args: Any) -> None:
-            executed.append(sql)
+    def fake_create_engine(url: str, **kw: Any) -> Engine:
+        seen.update(kw)
+        return create_engine("sqlite://", poolclass=StaticPool)
 
-        def close(self) -> None:
-            pass
-
-    class Connection:
-        def cursor(self) -> Cursor:
-            return Cursor()
-
-    listeners = list(engine.pool.dispatch.connect)
-    assert listeners
-    for listener in listeners:
-        try:
-            listener(Connection(), None)
-        except Exception:  # the dialect's own listeners need a real driver
-            pass
-    assert any("time_zone" in s and "+00:00" in s for s in executed)
+    monkeypatch.setattr(db_session, "_engine", None)
+    monkeypatch.setattr(db_session, "create_engine", fake_create_engine)
+    db_session.get_engine()
+    assert seen["connect_args"]["options"] == "-c timezone=UTC"
 
 
 def test_session_local_is_a_sessionmaker() -> None:

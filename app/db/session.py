@@ -1,9 +1,8 @@
 """Engine and sessions (spec 13.5)."""
 
 from collections.abc import Iterator
-from typing import Any
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import get_settings
@@ -11,16 +10,10 @@ from app.config import get_settings
 _engine: Engine | None = None
 
 
-def _set_utc(dbapi_connection: Any, connection_record: Any) -> None:
-    cursor = dbapi_connection.cursor()
-    try:
-        cursor.execute("SET time_zone = '+00:00'")
-    finally:
-        cursor.close()
-
-
 def get_engine() -> Engine:
-    """The process engine, created on first use so importing never connects."""
+    """The process engine, created on first use so importing never connects.
+
+    Every connection's session time zone is UTC (``db_connect_args``)."""
     global _engine
     if _engine is None:
         current = get_settings()
@@ -28,11 +21,11 @@ def get_engine() -> Engine:
             current.db_url,
             pool_pre_ping=True,
             pool_recycle=3600,
-            pool_size=10,
-            max_overflow=20,
+            pool_size=current.DB_POOL_SIZE,
+            max_overflow=current.DB_MAX_OVERFLOW,
+            pool_timeout=10,
             connect_args=current.db_connect_args,
         )
-        event.listen(_engine, "connect", _set_utc)
     return _engine
 
 

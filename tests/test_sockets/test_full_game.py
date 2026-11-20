@@ -7,7 +7,7 @@ has two real peer trades (see test_play_redaction for the scenario).
 
 Persistence seam: the spy of test_submit for every test but the last, which is
 the ``dbschema`` test: it restores section 18's real function and points
-``app.db.session.SessionLocal`` at the Testcontainers MySQL.
+``app.db.session.SessionLocal`` at the Testcontainers PostgreSQL.
 """
 
 from collections.abc import Iterator
@@ -25,7 +25,7 @@ from app.services.db_service import (
     persist_finished_game as real_persist_finished_game,
 )
 from tests.conftest import contains_key, contains_value
-from tests.fixtures.mysql import db_session, mysql_url  # noqa: F401
+from tests.fixtures.postgres import db_session, pg_url  # noqa: F401
 from tests.test_sockets.conftest import (
     SECRET_KEY_NAMES,
     SECRET_PATCH,
@@ -229,11 +229,11 @@ async def test_the_decision_of_day_one_is_in_no_broadcast_for_the_whole_game(
 # ------------------------------------------------------ real database (AC 4)
 @pytest.fixture
 def real_persistence(
-    mysql_url: str, monkeypatch: pytest.MonkeyPatch  # noqa: F811
+    pg_url: str, monkeypatch: pytest.MonkeyPatch  # noqa: F811
 ) -> Iterator[None]:
     from app.db import session as db_session_module
 
-    engine = create_engine(mysql_url)
+    engine = create_engine(pg_url)
     monkeypatch.setattr(db_service, "persist_finished_game", real_persist_finished_game)
     monkeypatch.setattr(db_session_module, "SessionLocal", sessionmaker(bind=engine))
     yield
@@ -242,7 +242,7 @@ def real_persistence(
 
 @aio
 @pytest.mark.dbschema
-async def test_a_full_game_persists_to_mysql_and_announces_the_game_id(
+async def test_a_full_game_persists_to_postgres_and_announces_the_game_id(
     world: World, real_persistence: None, db_session: Session  # noqa: F811
 ) -> None:
     game = await play_whole_game(world)

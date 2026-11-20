@@ -4,7 +4,7 @@
 
 The backend of Pulky, a multiplayer pulque-business simulation: FastAPI with a
 python-socketio server mounted beside it (`app.main:application`), SQLAlchemy 2 +
-PyMySQL for persistence, and live room state held in process memory or Redis.
+psycopg 3 on PostgreSQL for persistence, and live room state held in process memory or Redis.
 
 ## Read these instead of re-deriving
 
@@ -39,14 +39,23 @@ venv/bin/mypy app
 docker build -t pulky-backend .
 ```
 
-Migrations are Alembic only (`alembic upgrade head`); never `create_all()` at startup.
+Migrations are Alembic only (`alembic upgrade head`); never `create_all()` at startup. After a
+migration change, regenerate the reviewed DDL `db/schema.postgres.sql` with
+`python3 ../../scripts/db/gen_ddl.py --backend .` (Docker): the `dbschema` suite fails when it
+or the models drift from the migrations.
 
 ## Configuration that matters
 
 Settings are environment variables (a local dotenv file works): see the template file
 `.env.example`, where an empty value means the default. `CORS_ORIGINS` never contains
-`"*"`. `REDIS_ENABLED=false` means one process and live rooms lost on restart;
-`true` needs `REDIS_URL`. `FIREBASE_SERVICE_ACCOUNT_JSON` unset logs a CRITICAL
+`"*"`. The database is PostgreSQL (`DB_*`, port 5432), in production the database `pulkydb` on
+the Aiven service shared by the four Novus games: `DB_SSL_CA` (that service's CA, the
+same for all four games, PEM text or path) means `sslmode=verify-full`; without it `DB_REQUIRE_SSL=true` means
+`sslmode=require` (encrypted, not verified). Every session runs in UTC (`db_connect_args`).
+`DB_POOL_SIZE` + `DB_MAX_OVERFLOW` default to 2 + 1 = 3 per instance, Pulky's share of
+the shared 20-connection service (budget in `DEPLOY.md`): deploy one game at a time.
+`REDIS_ENABLED=false` means one process and live rooms lost on restart; `true` needs
+`REDIS_URL`. `FIREBASE_SERVICE_ACCOUNT_JSON` unset logs a CRITICAL
 message at startup and every signed-in user is rejected.
 
 ## Architecture rules not to break
@@ -82,7 +91,7 @@ message at startup and every signed-in user is rejected.
   results route, with no host secret or bearer (a guest host has no account to fall back on once
   the room is gone). It may carry only what the results already show: never a uid, email, user
   id, guest identity, session token or host secret (`tests/test_api/test_export.py`, the
-  `test_privacy_*` tests, run without MySQL). It names every pulquería by its alias, `P<N>` by
+  `test_privacy_*` tests, run without a database). It names every pulquería by its alias, `P<N>` by
   seat, with no display name (`host_display_name` included); the screens keep the names. Built
   files sit in `export_service`'s LRU (64 files, keyed by `(public_id, format)`, in process
   memory: per instance, empty after a restart, never expiring since a finished game never

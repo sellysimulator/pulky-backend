@@ -1,4 +1,4 @@
-"""Warn when database TLS is not required (spec 13.5)."""
+"""Warn when database TLS is off or unverified (spec 13.5)."""
 
 import logging
 
@@ -10,8 +10,17 @@ logger = logging.getLogger(__name__)
 
 @register_check
 def check_db_tls() -> None:
-    if not get_settings().DB_REQUIRE_SSL:
+    current = get_settings()
+    if current.DB_SSL_CA:
+        return  # sslmode=verify-full: encrypted, certificate and hostname checked
+    if not current.DB_REQUIRE_SSL:
         logger.warning(
-            "DB_REQUIRE_SSL is false: database connections are not required to "
-            "use TLS. Enable it in production."
+            "DB_REQUIRE_SSL is false and DB_SSL_CA is empty: PostgreSQL connections "
+            "are not required to use TLS. Enable it in production."
+        )
+    else:
+        logger.warning(
+            "DB_SSL_CA is empty: PostgreSQL connections require TLS but do not "
+            "verify the server certificate (sslmode=require). Set DB_SSL_CA to the "
+            "PostgreSQL service's CA certificate in production."
         )
