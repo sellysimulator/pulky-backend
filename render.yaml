@@ -1,12 +1,14 @@
-# Render Blueprint for the Pulky backend (docs/spec/13-deploy.md section 13.13).
+# Render settings for the Pulky backend (docs/spec/13-deploy.md section 13.13). The service is a
+# plain Docker web service made in the dashboard, not a Blueprint; keep the dashboard in step with this file.
 # One instance only: live state is in process memory (section 13.3).
 services:
   - type: web
     name: pulky-backend
     runtime: docker
     healthCheckPath: /api/v1/health
+    plan: free
     autoDeployTrigger: checksPass
-    preDeployCommand: alembic upgrade head
+    # Migrations run at container startup (Dockerfile CMD): free instances have no pre-deploy command.
     numInstances: 1
     envVars:
       - key: REDIS_ENABLED

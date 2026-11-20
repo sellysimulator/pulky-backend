@@ -10,9 +10,9 @@ Spec: `docs/spec/13-deploy.md` section 13.13 (the checklist lives there; this fi
 
 ## One-time setup
 
-1. In Render, create a Blueprint from this repo (`render.yaml`). It makes the Docker web service `pulky-backend` with one instance, health check `/api/v1/health`, `autoDeployTrigger: checksPass` and the pre-deploy command `alembic upgrade head`.
+1. In Render, create a plain Docker web service `pulky-backend` from this repo on the free plan (not a Blueprint; `render.yaml` records the settings to match): one instance, health check `/api/v1/health`, and Auto-Deploy set to "After CI checks pass" in the dashboard. Free instances have no pre-deploy command, so migrations run at container startup: the Dockerfile CMD runs `alembic upgrade head` and then starts uvicorn. A failed migration exits the container, the new instance never becomes healthy and Render keeps the previous deploy live.
 2. Set the variables marked `sync: false` in the Render dashboard: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_DATABASE` (the shared Novus Aiven PostgreSQL service's connection values: user `avnadmin` and the database `pulkydb`; `DB_HOST` is the service hostname), `DB_SSL_CA` (the service's CA certificate, the same one for all four games, one line, so connections use `sslmode=verify-full`), `FIREBASE_SERVICE_ACCOUNT_JSON` (one line) and `REDIS_URL` (leave empty while `REDIS_ENABLED` is `false`).
-   Connection budget: all four games share one Aiven PostgreSQL 17 service (Free plan, 20 connections), each with its own database and role. Per instance at most `DB_POOL_SIZE + DB_MAX_OVERFLOW`: 2 + 1 = 3 for Selly, Pulky and Beery, 3 + 1 = 4 for Lemony. Normal running: 3 + 3 + 3 + 4 = 13. During a deploy Render runs the old and new instance of that game side by side (at most +4 = 17), its pre-deploy `alembic upgrade head` takes 1 and one operator `psql` session 1: 19 of 20. So deploy one game at a time. A backend run locally against the shared service is one more instance; prefer a local Docker PostgreSQL for development. On a bigger plan raise both variables (in the Render dashboard).
+   Connection budget: all four games share one Aiven PostgreSQL 17 service (Free plan, 20 connections), each with its own database and role. Per instance at most `DB_POOL_SIZE + DB_MAX_OVERFLOW`: 2 + 1 = 3 for Selly, Pulky and Beery, 3 + 1 = 4 for Lemony. Normal running: 3 + 3 + 3 + 4 = 13. During a deploy Render runs the old and new instance of that game side by side (at most +4 = 17), the new instance's startup `alembic upgrade head` takes 1 and one operator `psql` session 1: 19 of 20. So deploy one game at a time. A backend run locally against the shared service is one more instance; prefer a local Docker PostgreSQL for development. On a bigger plan raise both variables (in the Render dashboard).
 3. In GitHub, make sure the `CI` workflow (`.github/workflows/ci.yml`) runs on `main`; Render waits for it before deploying.
 4. Deploy the frontend afterwards (see its `DEPLOY.md`).
 
@@ -37,7 +37,7 @@ python3 ../../scripts/db/gen_ddl.py --backend .
 ## Checklist (spec 13.13)
 
 - Backend variables are set on Render, not only locally.
-- The pre-deploy `alembic upgrade head` succeeded.
+- The startup `alembic upgrade head` succeeded: the deploy logs show Alembic's upgrade before uvicorn starts, and the deploy went live.
 - The database session is encrypted: `SELECT ssl, version FROM pg_stat_ssl WHERE pid = pg_backend_pid();` answers `t`, and the startup logs carry no DB TLS warning.
 - Startup logs show Firebase verification active, not the CRITICAL warning.
 - Smoke test on the deployed stack, signed in and as a guest: create, join from a second browser, play a full day, finish a game.

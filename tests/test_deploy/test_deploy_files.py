@@ -67,12 +67,15 @@ def check_render(doc: Any) -> list[str]:
         "runtime": "docker",
         "name": "pulky-backend",
         "healthCheckPath": "/api/v1/health",
+        "plan": "free",
         "autoDeployTrigger": "checksPass",
-        "preDeployCommand": "alembic upgrade head",
     }
     for key, value in expected.items():
         if svc.get(key) != value:
             problems.append(f"{key} must be {value!r}, got {svc.get(key)!r}")
+    # Free instances have no pre-deploy step; the Dockerfile CMD migrates at startup.
+    if "preDeployCommand" in svc:
+        problems.append("preDeployCommand must be absent (migrations run at startup)")
 
     env = svc.get("envVars")
     if not isinstance(env, list):
