@@ -1,14 +1,14 @@
 # ruff: noqa: F811
-"""Black-box tests for submit_day (plan section 16, 3.1; criteria 1, 7, 11, 12, 13).
+"""Black-box tests for submit_day (spec 4.3, 12.1).
 
-This module also owns the helpers the other section 16 suites import: the
+This module also owns the helpers the other play-loop suites import: the
 decision builder, the persistence stand-in and the lock watcher.
 
-Persistence seam: no test here calls section 18 with a real session factory
+Persistence seam: no test here persists with a real session factory
 except the ``dbschema`` test of test_full_game. Everywhere else the module
 attribute ``app.services.db_service.persist_finished_game`` is replaced by a
-spy (the call is made through the module at call time, plan 18 3.1a and
-00-conventions 3), so a finishing game never reaches a developer's database.
+spy (the call is made through the module at call time), so a finishing game
+never reaches a developer's database.
 """
 
 import asyncio
@@ -102,7 +102,7 @@ def room_engine(room: dict[str, Any]) -> Any:
 
 
 class PersistSpy:
-    """Stands in for section 18's persist_finished_game."""
+    """Stands in for ``persist_finished_game``."""
 
     def __init__(self, world: World) -> None:
         self.world = world
@@ -204,7 +204,7 @@ async def refused(
     return payload
 
 
-# --------------------------------------------------------- acceptance (AC 12)
+# ----------------------------------------------------- an accepted submission
 @aio
 async def test_an_accepted_submission_tells_the_room_the_submitter_and_the_host(
     world: World,
@@ -230,7 +230,7 @@ async def test_an_accepted_submission_tells_the_room_the_submitter_and_the_host(
     assert host["players"]["P1"]["has_submitted"] is True
     assert host["players"]["P2"]["has_submitted"] is False
     assert host["awaiting"] == ["P2"]
-    # consecutive seq values, one per logical event (spec 12, plan 3.9)
+    # consecutive seq values, one per logical event (spec 12)
     assert mine["seq"] == submitted["seq"] + 1
     assert host["seq"] == mine["seq"] + 1
     room = await world.room(game.code)
@@ -365,7 +365,7 @@ async def test_an_unreadable_decision_is_refused_before_a_second_submission_chec
     )
 
 
-# ------------------------------------------- one submission per day (FM 1, D5)
+# ------------------------------------------------- one submission per day (D5)
 @aio
 async def test_a_second_submission_is_refused_and_keeps_the_first_decision(
     world: World,
@@ -401,7 +401,7 @@ async def test_a_repeated_identical_submission_changes_nothing(world: World) -> 
     assert await world.room(game.code) == before
 
 
-# ---------------------------------------------------- stale day (FM 7, AC 2)
+# ----------------------------------------------------------------- stale day
 @aio
 async def test_a_stale_day_is_followed_by_a_full_your_state_to_the_same_sid(
     world: World,
@@ -439,7 +439,7 @@ async def test_a_day_from_the_future_is_stale_too(world: World) -> None:
     assert not room_engine(await world.room(game.code)).has_submitted("P2")
 
 
-# ------------------------------------------------ INVALID_DECISION (AC 1, 13)
+# ----------------------------------------------------------- INVALID_DECISION
 @aio
 async def test_a_negative_quantity_is_refused_and_changes_nothing(world: World) -> None:
     game = await world.running_game()
@@ -542,7 +542,7 @@ async def test_a_decision_the_player_cannot_afford_is_refused_by_the_engine(
     )
 
 
-# ----------------------------------------------- ordering windows (AC 11)
+# ------------------------------------------------------- ordering windows
 @aio
 async def test_closed_order_windows_are_refused_with_the_window_copy(
     world: World,
@@ -589,7 +589,7 @@ async def test_closed_order_windows_are_refused_with_the_window_copy(
     assert engine.awaiting() == ["P1", "P2"]
 
 
-# ----------------------------------------- concurrency (AC 7, FM 5)
+# ------------------------------------------------------ concurrency
 async def force_interleaving(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make every room read yield after reading, so an unlocked handler would
     work on a stale copy while a second handler reads the same one."""

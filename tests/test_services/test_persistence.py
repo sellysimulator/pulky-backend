@@ -1,8 +1,8 @@
 # ruff: noqa: F811
-"""Black-box tests for section 18: end-of-game persistence (all against PostgreSQL).
+"""Black-box tests for end-of-game persistence (all against PostgreSQL).
 
 Every test passes a ``session_factory`` bound to the Testcontainers PostgreSQL of
-section 17. Nothing here ever uses the default session factory.
+tests/fixtures/postgres.py. Nothing here ever uses the default session factory.
 """
 
 import copy
@@ -314,10 +314,10 @@ def test_fixture_game_has_the_scenario_it_claims(
     assert len(peer_engine.market_history()) == 7
 
 
-# ------------------------------------------------------------------ AC 1, 5
+# ------------------------------------------ what is written, and identities
 
 
-def test_ac1_a_finished_room_is_written_as_specified(
+def test_a_finished_room_is_written_as_specified(
     peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
 ) -> None:
     room = make_room(peer_engine)
@@ -349,7 +349,7 @@ def test_ac1_a_finished_room_is_written_as_specified(
     assert jv(cfg_row["config"]) == room["config"]
 
 
-def test_ac1_participants_carry_standings_and_settlement(
+def test_participants_carry_standings_and_settlement(
     peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
 ) -> None:
     persist(make_room(peer_engine), factory, db_session)
@@ -399,7 +399,7 @@ def test_ac1_participants_carry_standings_and_settlement(
     assert found["P1"]["peer_units_bought"] > 0 and found["P2"]["peer_units_sold"] > 0
 
 
-def test_ac1_player_days_and_market_days_match_the_engine(
+def test_player_days_and_market_days_match_the_engine(
     peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
 ) -> None:
     persist(make_room(peer_engine), factory, db_session)
@@ -424,7 +424,7 @@ def test_ac1_player_days_and_market_days_match_the_engine(
         assert row["peer_units"] == m.peer_units
 
 
-def test_ac5_signed_in_players_get_user_id_and_guests_get_guest_identity(
+def test_signed_in_players_get_user_id_and_guests_get_guest_identity(
     peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
 ) -> None:
     room = make_room(
@@ -447,7 +447,7 @@ def test_ac5_signed_in_players_get_user_id_and_guests_get_guest_identity(
     assert g["host_user_id"] == users["firebase-uid-host"]
 
 
-def test_ac5_a_guest_host_has_no_host_user_id(
+def test_a_guest_host_has_no_host_user_id(
     peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
 ) -> None:
     persist(make_room(peer_engine), factory, db_session)
@@ -455,7 +455,7 @@ def test_ac5_a_guest_host_has_no_host_user_id(
     assert g["host_user_id"] is None
 
 
-def test_fm5_a_guest_identity_never_creates_a_user(
+def test_a_guest_identity_never_creates_a_user(
     peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
 ) -> None:
     persist(make_room(peer_engine), factory, db_session)
@@ -464,10 +464,10 @@ def test_fm5_a_guest_identity_never_creates_a_user(
     assert count(db_session, "participants", "user_id IS NOT NULL") == 0
 
 
-# ---------------------------------------------------------------------- AC 2
+# --------------------------------------------------------------- idempotence
 
 
-def test_ac2_persisting_twice_returns_the_same_id_and_writes_nothing(
+def test_persisting_twice_returns_the_same_id_and_writes_nothing(
     peer_engine: PulkyEngine,
     factory: Callable[[], Session],
     db_engine: Engine,
@@ -487,7 +487,7 @@ def test_ac2_persisting_twice_returns_the_same_id_and_writes_nothing(
     assert before["games"] == 1
 
 
-def test_ac2_two_concurrent_calls_produce_one_game(
+def test_two_concurrent_calls_produce_one_game(
     peer_engine: PulkyEngine,
     factory: Callable[[], Session],
     db_engine: Engine,
@@ -527,7 +527,7 @@ def test_ac2_two_concurrent_calls_produce_one_game(
     }
 
 
-# ------------------------------------------------------------- AC 3, FM 2, 7
+# ----------------------------------------- failures roll back and are logged
 
 
 def inject_failure(engine: Engine, table: str) -> Callable[[], None]:
@@ -539,7 +539,7 @@ def inject_failure(engine: Engine, table: str) -> Callable[[], None]:
     return lambda: event.remove(engine, "before_cursor_execute", boom)
 
 
-def test_ac3_fm3_a_failure_in_market_days_leaves_no_row_anywhere(
+def test_a_failure_in_market_days_leaves_no_row_anywhere(
     peer_engine: PulkyEngine,
     factory: Callable[[], Session],
     db_engine: Engine,
@@ -559,7 +559,7 @@ def test_ac3_fm3_a_failure_in_market_days_leaves_no_row_anywhere(
     assert count(db_session, "market_days") == 7
 
 
-def test_fm2_fm7_an_injected_failure_is_logged_at_error_and_returns_none(
+def test_an_injected_failure_is_logged_at_error_and_returns_none(
     peer_engine: PulkyEngine,
     factory: Callable[[], Session],
     db_engine: Engine,
@@ -583,7 +583,7 @@ def test_fm2_fm7_an_injected_failure_is_logged_at_error_and_returns_none(
             assert secret not in message
 
 
-def test_fm7_a_session_factory_that_fails_never_raises(
+def test_a_session_factory_that_fails_never_raises(
     peer_engine: PulkyEngine, caplog: pytest.LogCaptureFixture
 ) -> None:
     def broken() -> Session:
@@ -628,10 +628,10 @@ def test_a_finished_room_without_a_game_id_is_refused_with_an_error_log(
     assert table_counts(db_session) == dict.fromkeys(TABLES, 0)
 
 
-# ------------------------------------------------------------- AC 4, FM 1, 4
+# ----------------------------------------------- insert count and timestamps
 
 
-def test_ac4_fm4_insert_count_does_not_grow_with_players_or_days(
+def test_insert_count_does_not_grow_with_players_or_days(
     factory: Callable[[], Session], db_engine: Engine, db_session: Session
 ) -> None:
     engine = play_big_game(players=12, days=20)
@@ -655,7 +655,7 @@ def test_ac4_fm4_insert_count_does_not_grow_with_players_or_days(
     assert len(rec.inserts) <= 5 + 5 + 4
 
 
-def test_fm1_every_persisted_row_carries_its_timestamps(
+def test_every_persisted_row_carries_its_timestamps(
     peer_engine: PulkyEngine,
     factory: Callable[[], Session],
     db_engine: Engine,
@@ -683,10 +683,10 @@ def test_fm1_every_persisted_row_carries_its_timestamps(
         assert missing == 0, table
 
 
-# ---------------------------------------------------------------------- AC 9
+# ------------------------------------------------- no credential in the logs
 
 
-def test_ac9_no_log_record_contains_an_identity_token_or_host_secret(
+def test_no_log_record_contains_an_identity_token_or_host_secret(
     peer_engine: PulkyEngine,
     factory: Callable[[], Session],
     db_session: Session,
@@ -713,7 +713,7 @@ def test_ac9_no_log_record_contains_an_identity_token_or_host_secret(
 # --------------------------------------------------------- load_stored_game
 
 
-def test_fm6_a_stored_and_reloaded_game_equals_the_engine_field_for_field(
+def test_a_stored_and_reloaded_game_equals_the_engine_field_for_field(
     peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
 ) -> None:
     room = make_room(
@@ -757,7 +757,7 @@ def test_fm6_a_stored_and_reloaded_game_equals_the_engine_field_for_field(
     assert g.market[1].peer_avg_price is not None
 
 
-def test_fm6_an_early_ended_game_round_trips_with_its_settlement(
+def test_an_early_ended_game_round_trips_with_its_settlement(
     early_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
 ) -> None:
     g = stored(db_session, persist(make_room(early_engine), factory, db_session))
@@ -767,7 +767,7 @@ def test_fm6_an_early_ended_game_round_trips_with_its_settlement(
     assert g.records["P1"] == early_engine.records("P1")
 
 
-def test_fm8_days_without_limits_store_sql_null_not_json_null(
+def test_days_without_limits_store_sql_null_not_json_null(
     peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
 ) -> None:
     gid = persist(make_room(peer_engine), factory, db_session)
@@ -844,7 +844,7 @@ def test_find_game_by_public_id(
     assert find_game_by_public_id(db_session, "0" * 32) is None
 
 
-def test_ac8_two_games_under_one_reissued_code_are_kept_apart_by_id(
+def test_two_games_under_one_reissued_code_are_kept_apart_by_id(
     peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
 ) -> None:
     """A room code is reissued once its live room expires (spec 11.3): the stored
@@ -903,7 +903,7 @@ def check_stats(row: dict[str, Any], want: dict[str, Any]) -> None:
             assert row[key] == pytest.approx(want[key], abs=1e-9), key
 
 
-def test_ac7_rebuild_user_stats_for_a_user_with_two_games_one_won(
+def test_rebuild_user_stats_for_a_user_with_two_games_one_won(
     factory: Callable[[], Session], db_session: Session
 ) -> None:
     game_a = play_peer_game(seed=11)

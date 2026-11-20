@@ -1,4 +1,4 @@
-"""Black-box tests for the handshake (section 15, spec 11.3, criterion 1)."""
+"""Black-box tests for the handshake (spec 11.3)."""
 
 import uuid
 

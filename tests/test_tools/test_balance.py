@@ -1,4 +1,4 @@
-"""Black-box tests for the balance harness (plan section 12)."""
+"""Black-box tests for the balance harness (spec 13.14)."""
 
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ class Spy:
 
 
 class ProxyEngine:
-    """Exposes only what a strategy may read (spec 12 AC 7)."""
+    """Exposes only what a strategy may read."""
 
     def __init__(self, engine: PulkyEngine, alias: str, log: list[str]) -> None:
         self._engine = engine
@@ -425,7 +425,7 @@ def test_trader_never_sends_empty_offers_over_a_game() -> None:
             assert 1 <= d.peer_sell.max_units <= MAX_ORDER
 
 
-# ------------------------------------------------------- acceptance criterion 1
+# ------------------------------------------------------------------- full games
 
 
 @pytest.mark.parametrize("peer", [True, False])
@@ -438,7 +438,7 @@ def test_every_strategy_plays_a_full_game(name: str, n: int, peer: bool) -> None
     assert len(e.records("P1")) == 14
 
 
-# ------------------------------------------- acceptance criterion 2 / FM 1, 2
+# ------------------------------------------ affordable decisions and trimming
 
 
 @pytest.mark.parametrize("cash", [5000.0, 100.0, 0.0])
@@ -494,7 +494,7 @@ def test_peer_limits_are_not_trimmed_by_cash() -> None:
     assert d.peer_buy == PeerBuy(30.0, 30)
 
 
-# ------------------------------------------------------------------ FM 3 / AC 7
+# ------------------------------------------------------------- restricted proxy
 
 
 @pytest.mark.parametrize("name", ALL)
@@ -572,7 +572,7 @@ def _expected_metrics(
     baseline_excludes_arrivals: bool = True,
     skip_disrupted_arrivals: bool = False,
 ) -> dict[str, Any]:
-    """Independent restatement of plan 12 section 3.4.
+    """Independent restatement of the disruption-day metrics (spec 13.14).
 
     A cut-arrival day is d + L for each disrupted day d with d + L <= the last day
     (d itself at L = 0); the baseline is every other day of the same weekdays.

@@ -1,4 +1,4 @@
-"""AC16: every shared fixture exists and works; the payload helpers see any depth."""
+"""Every shared fixture exists and works; the payload helpers see any depth."""
 
 import pytest
 from fastapi.testclient import TestClient

@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""Schema of spec 13.5 as migrated (section 17): AC1, AC2, AC3, AC8, FM2, FM3, FM5."""
+"""Schema of spec 13.5 as migrated."""
 
 from pathlib import Path
 from typing import Any
@@ -203,7 +203,7 @@ def indexed_leading_columns(engine: Engine, table: str) -> set[str]:
     return {cols[0] for _, _, cols in indexes(engine, table).values()}
 
 
-# --- AC1 / AC8 / FM5: columns -------------------------------------------------
+# --- columns ------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("table", sorted(ALL_TABLES))
@@ -215,7 +215,7 @@ def test_table_has_exactly_the_spec_columns(engine: Engine, table: str) -> None:
     "column", ["refrigeration_failure", "shortfall_spot", "peer_trades"]
 )
 def test_player_days_has_the_named_record_fields(engine: Engine, column: str) -> None:
-    """Failure mode 5: a record field with no column cannot be stored."""
+    """A record field with no column cannot be stored."""
     assert column in columns(engine, "player_days")
 
 
@@ -252,7 +252,7 @@ MONEY = {
 def test_money_columns_are_decimal_12_2(
     engine: Engine, table: str, column: str
 ) -> None:
-    """Failure mode 3: money is NUMERIC(12,2), never a binary floating point."""
+    """Money is NUMERIC(12,2), never a binary floating point."""
     assert columns(engine, table)[column]["type"] == "numeric(12,2)"
 
 
@@ -423,11 +423,11 @@ def test_user_stats_references_users(engine: Engine) -> None:
     assert foreign_keys(engine, "user_stats")["user_id"][0] == "users"
 
 
-# --- AC2 / AC3 / FM2: migration -----------------------------------------------
+# --- migration ----------------------------------------------------------------
 
 
 def test_alembic_check_reports_no_drift(pg_url: str) -> None:  # noqa: F811
-    """Failure mode 2: a model column missing from the migration (or vice versa)."""
+    """Catches a model column missing from the migration (or vice versa)."""
     command.check(alembic_config(pg_url))
 
 

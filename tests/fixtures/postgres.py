@@ -1,4 +1,4 @@
-"""Shared PostgreSQL fixtures (plan section 17, used by 17, 18 and 19).
+"""Shared PostgreSQL fixtures (used by the model, persistence and REST suites).
 
 A Testcontainers ``postgres:17`` with ``alembic upgrade head`` applied. Nothing here
 ever connects to a database named by ``settings``.

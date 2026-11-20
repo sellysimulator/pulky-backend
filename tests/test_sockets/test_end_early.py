@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""Black-box tests for end_game_early (plan 16, 3.3; criterion 5, failure mode 6)."""
+"""Black-box tests for end_game_early (spec 4.5, 11.3)."""
 
 import re
 from typing import Any
@@ -151,7 +151,7 @@ async def test_the_secret_is_checked_before_the_room_state(world: World) -> None
     )
 
 
-# --------------------------------------------------- outside running (FM 6)
+# ---------------------------------------------------------- outside running
 @aio
 async def test_in_the_lobby_ending_early_is_refused(world: World) -> None:
     code = await world.create_room()

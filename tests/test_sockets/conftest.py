@@ -1,8 +1,8 @@
-"""Fixtures and helpers shared by the section 15 socket suites.
+"""Fixtures and helpers shared by the socket suites.
 
-Everything here goes through public surfaces: the section 01 fakes, the
-section 13 state service, the section 14 room rules and the section 15
-handlers themselves.
+Everything here goes through public surfaces: the shared fakes of
+tests/conftest.py, the state service, the room rules and the socket handlers
+themselves.
 """
 
 import json

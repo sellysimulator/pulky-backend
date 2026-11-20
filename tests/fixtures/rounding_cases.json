@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared money-rounding cases for round_cents (spec §8.1). Copied unchanged to Pulky_Backend/tests/fixtures/ (section 02) and Pulky_Frontend/src/__tests__/fixtures/ (section 21); both sides must pass every case.",
+  "_comment": "Shared money-rounding cases for round_cents (spec §8.1). Kept byte-identical in Pulky_Backend/tests/fixtures/ and Pulky_Frontend/src/__tests__/fixtures/ (change both together); both sides must pass every case.",
   "round_cents": [
     {
       "value": 0.125,

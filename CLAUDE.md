@@ -10,20 +10,22 @@ psycopg 3 on PostgreSQL for persistence, and live room state held in process mem
 
 - The spec: `../docs/spec/` (start at `README.md` and `glossary.md`; backend layout
   and settings are `13-backend.md`, REST and database `13-rest-db.md`).
-- The build plan: `../docs/plan/` (`00-conventions.md` first, then the section
-  document for the file you are changing).
+- `../docs/` (the spec and `design.md`) is not in this repository: it is versioned in the
+  Novus docs repository, so a change that edits the spec is committed there, separately.
 
 ## Directory layout
 
 ```
 app/main.py             FastAPI + socketio.ASGIApp -> `application`; lifespan checks
 app/config.py           Settings (pydantic-settings)
-app/core/               pure domain modules; checks/ and firebase.py are the impure ones
+app/core/               pure domain modules; checks/, firebase.py and abuse.py are the impure ones
 app/api/deps.py         verify_firebase_id_token, get_current_firebase_user
 app/api/v1/             routers, auto-discovered
 app/db/, app/models/    engine and sessions; Base and TimestampMixin
 app/services/           state_backend.py and the services built on it
 app/sockets/            manager.py (server + SocketManager), errors.py (@guarded), handlers/
+app/tools/balance.py    the balance harness (spec 13.14)
+alembic/, db/           migrations; db/schema.postgres.sql is the reviewed DDL snapshot
 tests/                  conftest.py holds the shared test doubles
 ```
 
@@ -33,11 +35,18 @@ tests/                  conftest.py holds the shared test doubles
 python3.11 -m venv venv && venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 venv/bin/uvicorn app.main:application --reload --port 8080
 venv/bin/pytest -m "not dbschema"
+venv/bin/pytest -m dbschema      # needs a running Docker daemon (Testcontainers postgres:17)
 venv/bin/ruff check app tests
 venv/bin/black --check app tests
 venv/bin/mypy app
 docker build -t pulky-backend .
+venv/bin/python -m app.tools.balance --seeds 1000 --players 4 [--json]
 ```
+
+The full gate is both pytest runs plus ruff, black and mypy; the coverage floors CI enforces
+are the lines in `DEPLOY.md`. mypy is non-strict, except `disallow_untyped_defs` for
+`app.core.*`. Rerun the balance harness after any change to a default (spec 9.1, 13.14); it
+exits 1 when a target fails.
 
 Migrations are Alembic only (`alembic upgrade head`); never `create_all()` at startup. The
 container runs `alembic upgrade head` at startup, before uvicorn (Dockerfile CMD), because free
@@ -63,12 +72,19 @@ message at startup and every signed-in user is rejected.
 ## Architecture rules not to break
 
 - `app/core/` domain modules import only the standard library, pydantic and each other;
-  none imports `app/core/firebase.py` or `app/core/checks/`.
+  none imports `app/core/firebase.py` or `app/core/checks/`. They do no I/O, read no clock,
+  never log and never call module-level `random` functions: randomness comes only from
+  `app.core.rng.stream(seed, day, purpose)`. The impure modules of `app/core` are
+  `firebase.py`, `checks/` and `abuse.py` (it logs and reads `time`), and no domain module
+  imports them.
 - Reach the socket manager through `app.sockets.manager.get_socket_manager()`, the state
   backend through the module (`from app.services import state_backend` then
   `state_backend.get_state_backend()`, never `from app.services.state_backend import
   get_state_backend`) and Firebase verification through `app.api.deps.verify_firebase_id_token`
-  at call time, never bound at import, because the section 01 fixtures monkeypatch the module attribute.
+  at call time, never bound at import, because the shared test doubles in `tests/conftest.py`
+  monkeypatch the module attribute. Persistence is reached the same way, through the module
+  (`db_service.persist_finished_game`, as `play_service` does), because the socket tests that
+  run without a database replace it there.
 - Handlers that can fail are wrapped in `@guarded()`; errors never carry exception text.
 - REST errors are `HTTPException` with a string `detail`; never return `str(e)`.
 - Never log secrets, tokens, identities or payloads.
@@ -105,8 +121,10 @@ message at startup and every signed-in user is rejected.
   chart) is built from the day records plus the free initial pipeline, which both callers pass from the
   game config (`initial_pipeline=lead_time_days * initial_pipeline_qty`); both identities of section 8.6
   hold by construction, and `tests/test_core/test_stats_flow.py` property-tests them.
-- Shared fixtures in `../docs/plan/fixtures/` are copied unchanged into each repo's
-  tests. The backend owns the engine; the frontend only renders what the server sends.
+- `tests/fixtures/rounding_cases.json` is the money-rounding contract (spec 8.1) and has a
+  byte-identical twin in `Pulky_Frontend/src/__tests__/fixtures/`; change both together,
+  since no test compares them. `tests/fixtures/config_math_cases.json` is backend-only (spec
+  D54). The backend owns the engine; the frontend only renders what the server sends.
 - **Hidden defaults** (spec 9.3): the four risk odds of `HIDDEN_DEFAULT_KEYS`
   (`app/core/defaults.py`) reach no host before the game ends. `room["config"]` is the
   host's config, null at each one left at its default; build the engine's config with
@@ -167,3 +185,28 @@ message at startup and every signed-in user is rejected.
 - **[HARD-WON]** `pytest.ini` scopes collection; pytest-asyncio 1.x fails unmarked async tests.
 - Never list `asyncio` in a requirements file.
 - `TestClient` runs the lifespan only as `with TestClient(app) as c:`.
+- No `TODO`, no commented-out code and no debug `print` in committed code (the tools in
+  `app/tools/` print their report); ruff's rule set does not catch them. Log with
+  `logging.getLogger(__name__)` per module.
+
+## Tests
+
+- Tests live in `tests/test_<area>/test_<behaviour>.py`. The shared doubles (`fake_redis`,
+  `memory_backend`, `firebase_tokens`, `fake_socket_manager`, `client`, `lifespan_client`)
+  are in `tests/conftest.py`, and test data in `tests/fixtures/`.
+- Every `async def test_*` carries `@pytest.mark.asyncio` (strict mode). Property tests use
+  Hypothesis, randomised tests fix their seeds, and no test depends on wall-clock time.
+- Database tests carry `@pytest.mark.dbschema` and use the PostgreSQL fixtures of
+  `tests/fixtures/postgres.py` (`pg_url`, `db_session`: a Testcontainers `postgres:17` with
+  `alembic upgrade head` applied). Pass `persist_finished_game` a `session_factory` bound to
+  the container, never the default one: a developer machine may run PostgreSQL on
+  localhost. A model change needs a new Alembic revision, or
+  `test_alembic_check_reports_no_drift` fails.
+- Test through public functions, emits and responses. Never assert on a private
+  (underscore) name, on log text, or on copy the spec does not quote: for an unquoted
+  message assert the error code (and field) and that the message is a non-empty string.
+  Assert emit order only where spec 12.3 states it.
+- A regression test must fail against the bug it names: break the code once, see it go
+  red, then restore the code. Never edit a test just to make it pass.
+- An expected value sits next to the input that produces it, or comes from a named shared
+  table in `tests/fixtures/`; never copy numbers from another file.

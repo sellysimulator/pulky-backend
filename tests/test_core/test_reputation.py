@@ -1,4 +1,4 @@
-"""Black-box tests for section 09: reputation (spec 7.6)."""
+"""Black-box tests for reputation (spec 7.6)."""
 
 import pytest
 from hypothesis import given
@@ -15,7 +15,7 @@ def test_fill_and_waste_worked_example() -> None:
 
 
 def test_fill_ratio_empty_day_is_one() -> None:
-    # Failure mode 4: a day with nothing owed must not lower reputation.
+    # A day with nothing owed must not lower reputation.
     assert fill_ratio(0, 0) == 1.0
     day_rep = update_reputation(0.7, fill_ratio(0, 0), waste_ratio(0, 0), 0.3, 0.3)
     assert day_rep == pytest.approx(0.7 * 0.7 + 0.3 * 1.0, abs=1e-9)
@@ -23,7 +23,7 @@ def test_fill_ratio_empty_day_is_one() -> None:
 
 
 def test_waste_ratio_zero_when_nothing_sold_or_spoiled() -> None:
-    # Failure mode 5: no ZeroDivisionError.
+    # No ZeroDivisionError.
     assert waste_ratio(0, 0) == 0.0
 
 
@@ -36,7 +36,7 @@ def test_update_reputation_worked_example() -> None:
 
 
 def test_update_reputation_smoothing_direction() -> None:
-    # Failure mode 6: backwards smoothing would give 0.74.
+    # Backwards smoothing would give 0.74.
     got = update_reputation(0.6, 0.8, 0.2, 0.3, 0.3)
     assert got != pytest.approx(0.74, abs=1e-6)
     # rho = 0 keeps the old value; rho = 1 takes today's value.

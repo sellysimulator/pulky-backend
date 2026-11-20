@@ -1,4 +1,4 @@
-"""Black-box tests for section 11: spec 8.7 invariants, replay, order independence."""
+"""Black-box tests for spec 8.7 invariants, replay, order independence."""
 
 import copy
 import json

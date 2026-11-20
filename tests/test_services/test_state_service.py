@@ -1,7 +1,7 @@
-"""Black-box tests for the state service (section 13).
+"""Black-box tests for the state service.
 
 Every behaviour runs on both backends: ``InMemoryBackend`` and ``FakeRedis``
-(spec 13.3), through the section 01 fixtures.
+(spec 13.3), through the shared fixtures of tests/conftest.py.
 """
 
 import asyncio
@@ -206,7 +206,7 @@ def test_new_room_document_shape() -> None:
     }
 
 
-# --- AC 2: create_room -------------------------------------------------------
+# --- create_room -------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -241,7 +241,7 @@ async def test_create_room_mints_distinct_codes_and_secrets(svc: StateService) -
     assert len({r["host_secret"] for r in rooms}) == 5
 
 
-# --- AC 3: round trip --------------------------------------------------------
+# --- round trip --------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -295,7 +295,7 @@ async def test_save_room_accepts_lowercase_code(svc: StateService) -> None:
     assert (await svc.get_room("ABC234"))["room_code"] == "ABC234"
 
 
-# --- failure mode 5: case-insensitive codes ----------------------------------
+# --- case-insensitive codes --------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -353,7 +353,7 @@ def test_is_room_code_accepts_any_case_of_the_alphabet() -> None:
     assert not state_service.is_room_code("ABC23\u00df")  # upper() grows it
 
 
-# --- AC 4 / failure mode 2: schema guard -------------------------------------
+# --- schema guard ------------------------------------------------------------
 
 
 def _stale_variants() -> list[tuple[str, dict[str, Any]]]:
@@ -398,7 +398,7 @@ async def test_current_document_survives_the_guard(
     assert await backend.exists("room:KEEP22") == 1
 
 
-# --- AC 5 / failure mode 4: TTL ----------------------------------------------
+# --- TTL ---------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -471,7 +471,7 @@ async def test_each_save_refreshes_the_ttl(backend: Any) -> None:
     assert await svc.get_room("ABC234") is None
 
 
-# --- failure mode 6: JSON strings, not live objects --------------------------
+# --- JSON strings, not live objects ------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -495,7 +495,7 @@ async def test_store_holds_json_not_the_dict(svc: StateService, backend: Any) ->
     assert again is not stored
 
 
-# --- AC 6 / failure mode 1: the lock ------------------------------------------
+# --- the lock -----------------------------------------------------------------
 
 
 async def _bump(svc: StateService, code: str) -> None:
@@ -576,7 +576,7 @@ async def test_lock_key_and_timeout(backend: Any) -> None:
     assert default.lock_calls == [("lock:room:ABC234", 10)]
 
 
-# --- AC 7: code collisions ----------------------------------------------------
+# --- code collisions ----------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -665,7 +665,7 @@ async def test_next_seq_persists_once_the_caller_saves(svc: StateService) -> Non
     assert (await svc.get_room(code))["seq"] == 1
 
 
-# --- AC 8 / failure mode 3: aliases -------------------------------------------
+# --- aliases ------------------------------------------------------------------
 
 
 def test_next_free_alias_worked_examples() -> None:
@@ -718,7 +718,7 @@ def test_next_free_alias_property(taken: set[int]) -> None:
     assert all(k in taken for k in range(1, n))
 
 
-# --- AC 9: the process singleton ------------------------------------------------
+# --- the process singleton ------------------------------------------------------
 
 
 @pytest.mark.asyncio

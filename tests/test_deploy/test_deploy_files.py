@@ -1,4 +1,4 @@
-"""Section 20: the backend deploy files (render.yaml, ci.yml, DEPLOY.md).
+"""The backend deploy files (render.yaml, ci.yml, DEPLOY.md; spec 13.13).
 
 Each rule is a checker that returns a list of problems. The real file must
 yield none; a copy broken the way a failure mode describes must yield some,
@@ -117,7 +117,7 @@ def test_render_yaml_exists_and_parses() -> None:
     assert isinstance(load_yaml(RENDER), dict)
 
 
-def test_render_yaml_meets_section_20_contract() -> None:
+def test_render_yaml_meets_the_deploy_contract() -> None:
     assert check_render(load_yaml(RENDER)) == []
 
 
@@ -139,7 +139,7 @@ def test_render_yaml_has_no_secret_value_anywhere() -> None:
 
 
 def test_ungated_deploys_are_detected() -> None:
-    """Failure mode 1 (spec 14 #18): no checksPass means deploys skip CI."""
+    """Spec 14 #18: no checksPass means deploys skip CI."""
     for mutate in ("remove", "auto"):
         doc = copy.deepcopy(load_yaml(RENDER))
         if mutate == "remove":
@@ -151,7 +151,7 @@ def test_ungated_deploys_are_detected() -> None:
 
 
 def test_multi_instance_with_memory_state_is_detected() -> None:
-    """Failure mode 4 (spec 13.3): two instances would split the rooms."""
+    """Two instances would split the rooms (spec 13.3)."""
     doc = copy.deepcopy(load_yaml(RENDER))
     doc["services"][0]["numInstances"] = 2
     problems = check_render(doc)

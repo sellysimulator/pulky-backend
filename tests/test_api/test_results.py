@@ -1,11 +1,12 @@
 # ruff: noqa: F811
-"""Black-box tests for section 19: the results routes (all against PostgreSQL).
+"""Black-box tests for the results routes (all against PostgreSQL).
 
-This module also owns the builders and fixtures the other section 19 test
+This module also owns the builders and fixtures the other REST test
 modules import (``test_export``, ``test_claim``, ``test_users``). Every game is
-played with section 11's engine, put into a finished room document and persisted
-by section 18's ``persist_finished_game`` through a ``session_factory`` bound to
-section 17's Testcontainers PostgreSQL, never the default ``SessionLocal``.
+played with the engine, put into a finished room document and persisted by
+``persist_finished_game`` through a ``session_factory`` bound to the
+Testcontainers PostgreSQL of tests/fixtures/postgres.py, never the default
+``SessionLocal``.
 """
 
 import asyncio
@@ -319,7 +320,7 @@ def scalar(db: Session, sql: str, **params: Any) -> Any:
 
 
 def put_live_room(room: dict[str, Any]) -> None:
-    """Make ``room`` a live room of the state service (section 13)."""
+    """Make ``room`` a live room of the state service."""
     asyncio.run(get_state_service().save_room(room["room_code"], room))
 
 
@@ -366,7 +367,7 @@ def test_fixture_games_have_the_scenario_they_claim(
     assert len(early_engine.market_history()) == 3
 
 
-# --------------------------------------------------- AC 1, metadata
+# -------------------------------------------- live parity, metadata
 
 
 def check_parity(body: dict[str, Any], engine: PulkyEngine) -> None:
@@ -382,7 +383,7 @@ def check_parity(body: dict[str, Any], engine: PulkyEngine) -> None:
 
 
 @pytest.mark.parametrize("fixture_name", ["natural_engine", "early_engine"])
-def test_ac1_the_results_route_equals_the_live_results(
+def test_the_results_route_equals_the_live_results(
     fixture_name: str,
     request: pytest.FixtureRequest,
     api: TestClient,
@@ -444,7 +445,7 @@ def test_results_metadata_and_shape(
     assert norm(results_response(stored(db_session, gid))) == body
 
 
-def test_ac1_early_end_metadata(
+def test_early_end_metadata(
     api: TestClient, factory: Callable[[], Session], early_engine: PulkyEngine
 ) -> None:
     gid = persist(make_room(early_engine), factory)
@@ -454,10 +455,10 @@ def test_ac1_early_end_metadata(
     assert body["days_played"] < body["duration_days"]
 
 
-# --------------------------------------------------- FM 7
+# --------------------------------- stored rows round trip
 
 
-def test_fm7_a_stored_row_that_drifts_from_the_live_result_fails_parity(
+def test_a_stored_row_that_drifts_from_the_live_result_fails_parity(
     api: TestClient,
     factory: Callable[[], Session],
     db_session: Session,
@@ -480,7 +481,7 @@ def test_fm7_a_stored_row_that_drifts_from_the_live_result_fails_parity(
     assert drifted["stats"] != norm(natural_engine.results())["stats"]
 
 
-def test_fm7_peer_fields_survive_the_round_trip_into_the_summary(
+def test_peer_fields_survive_the_round_trip_into_the_summary(
     api: TestClient, factory: Callable[[], Session], natural_engine: PulkyEngine
 ) -> None:
     gid = persist(make_room(natural_engine), factory)
@@ -497,10 +498,10 @@ def test_fm7_peer_fields_survive_the_round_trip_into_the_summary(
     assert p1["final_settlement"] == live["players"]["P1"]["final_settlement"]
 
 
-# --------------------------------------------------- AC 2, 404s
+# --------------------------------- reused codes, 404s, no leaks
 
 
-def test_ac2_games_under_a_reused_room_code_are_each_served_by_their_own_id(
+def test_games_under_a_reused_room_code_are_each_served_by_their_own_id(
     api: TestClient, factory: Callable[[], Session], natural_engine: PulkyEngine
 ) -> None:
     """A room code is reissued once its live room expires: results are reached by
@@ -538,7 +539,7 @@ def test_unknown_code_and_unknown_id_answer_404(
     assert api.get(f"/api/v1/games/id/{gid}/results").status_code == 200
 
 
-def test_ac3_results_routes_carry_no_identity_or_credential(
+def test_results_routes_carry_no_identity_or_credential(
     api: TestClient, factory: Callable[[], Session], natural_engine: PulkyEngine
 ) -> None:
     room = make_room(natural_engine)

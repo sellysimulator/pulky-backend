@@ -1,4 +1,4 @@
-"""Entry point, CORS and auto-discovery (spec 13.2): AC10 and the app wiring."""
+"""Entry point, CORS, auto-discovery and the app wiring (spec 13.2)."""
 
 import ast
 import os

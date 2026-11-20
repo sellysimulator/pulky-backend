@@ -1,4 +1,4 @@
-"""Black-box tests for section 11: player_view, host_view, standings and results."""
+"""Black-box tests for player_view, host_view, standings and results."""
 
 import copy
 import json
@@ -269,7 +269,7 @@ def test_player_view_cellar_entries_match_the_cellar_view():
     assert v["expected_spoil_tonight"] == Cellar([lot]).expected_spoil_tonight()
 
 
-def test_section_3_5_example_qualities_and_last_days_through_the_engine():
+def test_spec_3_5_example_qualities_and_last_days_through_the_engine():
     config = quiet(4, stock__initial_stock=0, demand__per_player_peak=1)
     e = start(config, seed=2)
     for _ in range(4):
@@ -665,7 +665,6 @@ def test_host_daily_form_swaps_histories_for_the_last_entries():
 
 
 def test_a_pending_decision_never_reaches_the_host_or_a_rival():
-    # spec 11 failure mode 5
     e = start(quiet(2, starting_cash=100000), seed=11)
     decision = D(
         1,

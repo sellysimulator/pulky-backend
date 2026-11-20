@@ -1,4 +1,4 @@
-"""Black-box tests for the per-player ``flow`` of ``app.core.stats`` (section 34)."""
+"""Black-box tests for the per-player ``flow`` of ``app.core.stats`` (spec 8.6)."""
 
 from __future__ import annotations
 
@@ -149,7 +149,7 @@ def hand(
 
 
 def example_records() -> list[DayRecord]:
-    """Spec section 34 section 4: one player, lead time 1."""
+    """A worked example: one player, lead time 1."""
     return [
         hand(1, 30, 20, 0, 5, 0, 0, 25, 0, 0, 5),
         hand(2, 5, 10, 4, 0, 15, 2, 18, 1, 1, 2),
@@ -220,7 +220,7 @@ def test_natural_end_example_gives_the_spec_values():
 
 
 def test_closing_stock_is_the_last_days_not_the_first_or_the_peak():
-    # failure mode 1: the first record's closing is 5 (also the peak), the last's 3
+    # the first record's closing is 5 (also the peak), the last's 3
     f = flow_of(example_records())
     assert f["closing_stock"] == 3
     assert f["closing_stock"] != 5
@@ -233,7 +233,6 @@ def test_early_end_example_gives_the_spec_values():
 
 
 def test_lost_units_are_not_delivered_and_in_transit_is_not_clamped():
-    # failure modes 2 and 5
     f = flow_of(example_records()[:2])
     assert f["delivered"] == 15
     assert f["in_transit_end"] == 14
@@ -241,7 +240,7 @@ def test_lost_units_are_not_delivered_and_in_transit_is_not_clamped():
 
 
 def test_initial_stock_is_the_first_days_opening_stock():
-    # failure mode 4: opening 30 while no closing stock or later opening is 30
+    # opening 30 while no closing stock or later opening is 30
     records = [
         hand(1, 30, 0, 0, 0, 0, 0, 10, 0, 0, 7),
         hand(2, 7, 0, 0, 0, 0, 0, 7, 0, 0, 0),
@@ -265,7 +264,7 @@ def test_no_records_gives_zeros_except_the_initial_pipeline():
 
 
 def test_initial_pipeline_example_gives_the_spec_values():
-    # failure mode 6: shipments only would give 8 + 0 - 0 - 10 = -2
+    # shipments only would give 8 + 0 - 0 - 10 = -2
     records = [
         hand(1, 20, 8, 0, 0, 5, 0, 22, 0, 0, 3),
         hand(2, 3, 0, 0, 0, 5, 0, 6, 0, 0, 2),
@@ -330,7 +329,7 @@ def test_flow_totals_equal_the_existing_player_totals():
 
 
 def test_flow_is_built_from_the_records_only_not_the_settlement():
-    # failure mode 3: a flow read from the settlement would change here
+    # a flow read from the settlement would change here
     records = example_records()[:2]
     a = flow_of(records)
     odd = FinalSettlement(
@@ -551,7 +550,6 @@ def test_the_games_reach_losses_and_units_in_transit_at_an_early_end():
 
 
 def test_round_trip_parity_on_a_game_ended_early_with_units_in_transit():
-    # failure mode 3
     e = play_game(5, 3, 2, 2, True, failure=1.0, pipeline_qty=5)
     live = e.standings()
     assert any(live["players"][a]["flow"]["in_transit_end"] > 0 for a in e.aliases)
@@ -561,7 +559,7 @@ def test_round_trip_parity_on_a_game_ended_early_with_units_in_transit():
 
 
 def test_standings_pass_the_initial_pipeline():
-    # failure mode 6: lead time 2 x 5 units per slot = 10
+    # lead time 2 x 5 units per slot = 10
     e = play_game(3, 2, 2, 2, True, pipeline_qty=5)
     for a in e.aliases:
         assert e.standings()["players"][a]["flow"]["initial_pipeline"] == 10

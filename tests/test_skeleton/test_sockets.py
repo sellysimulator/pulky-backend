@@ -1,4 +1,4 @@
-"""Socket manager, @guarded and the Socket.IO server (AC11, AC12, FM3-5)."""
+"""Socket manager, @guarded and the Socket.IO server."""
 
 import logging
 import os
@@ -55,8 +55,6 @@ async def test_guarded_emits_server_error_to_the_calling_sid(
 async def test_guarded_message_never_leaks_exception_text(
     fake_socket_manager: FakeSocketManager,
 ) -> None:
-    """Failure mode 4."""
-
     @guarded()
     async def handler(sid: str) -> None:
         raise RuntimeError(SECRET_ERROR)
@@ -70,8 +68,6 @@ async def test_guarded_message_never_leaks_exception_text(
 async def test_guarded_logs_the_traceback_at_error(
     fake_socket_manager: FakeSocketManager, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Failure mode 5."""
-
     @guarded()
     async def handler(sid: str) -> None:
         raise RuntimeError(SECRET_ERROR)
@@ -129,7 +125,7 @@ async def test_guarded_hands_a_non_object_payload_over_as_none(
 
 
 def test_logger_follows_debug_false() -> None:
-    """Failure mode 3 / AC12: no hardcoded engine.io payload logging."""
+    """No hardcoded engine.io payload logging."""
     out = _run(
         "import logging, app.sockets.manager as m;"
         "print(logging.getLogger('socketio.server').level,"

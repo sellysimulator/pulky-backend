@@ -1,4 +1,4 @@
-"""Redaction across a whole lobby-to-finish flow (section 15, criterion 10).
+"""Redaction across a whole lobby-to-finish flow.
 
 Spec 11.1: nothing player-facing carries a secret, an identity, a session token
 or a host secret, and the shown config is exactly the five keys of spec 9.3.
@@ -223,7 +223,6 @@ async def test_identity_and_host_secret_appear_nowhere_they_should_not(
 
 @aio
 async def test_no_room_emit_carries_a_session_token(world: World) -> None:
-    # Failure mode 8.
     flow = await lobby_to_finish(world)
     broadcasts = room_emits(world, flow)
     assert broadcasts

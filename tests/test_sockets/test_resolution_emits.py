@@ -1,8 +1,7 @@
 # ruff: noqa: F811
-"""Black-box tests for the resolution emits and finish (plan section 16, 3.1, 3.4).
+"""Black-box tests for the resolution emits and finish (spec 12.3).
 
-Criteria 2, 3, 4 and 10; failure modes 3, 4 and 8. Persistence is the spy of
-test_submit (see its docstring for the seam).
+Persistence is the spy of test_submit (see its docstring for the seam).
 """
 
 import logging
@@ -55,7 +54,7 @@ async def last_submit(
     return world.sm.records[start:]
 
 
-# ------------------------------------------------------ order and seq (AC 2)
+# ------------------------------------------------------------- order and seq
 @aio
 async def test_a_resolution_emits_in_the_pinned_order(world: World) -> None:
     game = await world.running_game()
@@ -107,7 +106,7 @@ async def test_resolution_seq_values_increase_and_are_shared_per_event(
     assert (await world.room(game.code))["seq"] == opened["seq"]
 
 
-# --------------------------------------------- the payloads (AC 2, AC 3)
+# ---------------------------------------------------------- the payloads
 @aio
 async def test_resolution_payloads_are_the_engines_own(world: World) -> None:
     game = await world.running_game()
@@ -176,7 +175,7 @@ async def test_your_day_closed_goes_to_the_players_current_sid(world: World) -> 
     assert not [r for r in got if r[0] == "p2"]
 
 
-# ----------------------------------------- daily form, no history (FM 8)
+# ------------------------------------------------ daily form, no history
 @aio
 async def test_no_resolution_state_ever_resends_the_history(world: World) -> None:
     game = await world.running_game(LONG)
@@ -199,7 +198,7 @@ async def test_no_resolution_state_ever_resends_the_history(world: World) -> Non
     assert host["last_market_day"]["day"] == 10
 
 
-# ---------------------------------------------------- emit after lock (FM 3)
+# ----------------------------------------------------------- emit after lock
 @aio
 async def test_nothing_is_emitted_while_the_room_lock_is_held(
     world: World, monkeypatch: pytest.MonkeyPatch
@@ -237,7 +236,7 @@ async def test_persistence_runs_after_the_emits_outside_the_lock_and_off_the_loo
     assert "game_persisted" not in [r[1] for r in sent]
 
 
-# ------------------------------------------------------ finishing (AC 4)
+# ------------------------------------------------------------- finishing
 @aio
 async def test_a_finishing_day_emits_game_finished_then_game_persisted(
     world: World, persist: PersistSpy, caplog: pytest.LogCaptureFixture
@@ -310,7 +309,7 @@ async def test_every_resolution_logs_its_day_and_duration(
     assert f"room {game.code} finished" not in messages
 
 
-# -------------------------------------------- persistence failure (AC 10)
+# ---------------------------------------------------- persistence failure
 @aio
 async def test_a_failed_persistence_leaves_the_game_finished_and_silent(
     world: World, persist: PersistSpy

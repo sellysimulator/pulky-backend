@@ -1,5 +1,5 @@
 # ruff: noqa: F811
-"""Behaviour of the models and the migrated schema (section 17): AC4-AC7, AC9."""
+"""Behaviour of the models and the migrated schema (spec 13.5)."""
 
 import re
 from datetime import UTC, datetime
@@ -76,14 +76,14 @@ def test_the_app_connect_args_set_the_session_time_zone_to_utc(
     assert got.utcoffset().total_seconds() == 0
 
 
-# --- AC4 / FM1 ----------------------------------------------------------------
+# --- server-default timestamps ------------------------------------------------
 
 
 @pytest.mark.dbschema
 def test_raw_insert_without_timestamps_succeeds_and_fills_both(
     db_session: Session,  # noqa: F811
 ) -> None:
-    """Failure mode 1: no server_default makes this NOT NULL insert fail."""
+    """Without a server_default this NOT NULL insert would fail."""
     db_session.execute(GAME_INSERT)
     db_session.commit()
     row = db_session.execute(text("SELECT created_at, updated_at FROM games")).one()
@@ -132,7 +132,7 @@ def test_user_stats_raw_insert_without_timestamps(
 
 
 def test_every_model_table_carries_server_default_timestamps() -> None:
-    """Failure mode 1, at the metadata level."""
+    """The server-default timestamps, checked at the metadata level."""
     import app.models.game  # noqa: F401
     import app.models.user  # noqa: F401
     from app.models.base import Base
@@ -177,14 +177,14 @@ def test_public_surface_table_names() -> None:
     ]
 
 
-# --- AC5 / FM4 ----------------------------------------------------------------
+# --- keys and uniqueness ------------------------------------------------------
 
 
 @pytest.mark.dbschema
 def test_same_room_code_and_start_under_two_ids_are_both_stored(
     db_session: Session,
 ) -> None:  # noqa: F811
-    """Failure mode 4: a game is keyed by its public_id alone; a reissued room code,
+    """A game is keyed by its public_id alone; a reissued room code,
     even at the same start, is another game."""
     db_session.execute(GAME_INSERT)
     db_session.execute(
@@ -253,7 +253,7 @@ def test_distinct_keys_do_not_collide(db_session: Session) -> None:  # noqa: F81
     assert count(db_session, "player_days") == 3
 
 
-# --- AC6 ----------------------------------------------------------------------
+# --- cascades -----------------------------------------------------------------
 
 
 @pytest.mark.dbschema
@@ -288,7 +288,7 @@ def test_deleting_a_user_nulls_references(db_session: Session) -> None:  # noqa:
     assert count(db_session, "participants") == 1
 
 
-# --- AC7 ----------------------------------------------------------------------
+# --- money --------------------------------------------------------------------
 
 
 @pytest.mark.dbschema
@@ -390,14 +390,14 @@ def test_two_decimal_floats_read_back_exactly(
     assert stored.ended_early is True
 
 
-# --- FM6 ----------------------------------------------------------------------
+# --- SQL NULLs and JSON columns -----------------------------------------------
 
 
 @pytest.mark.dbschema
 def test_no_trade_day_rows_insert_with_sql_nulls(
     db_session: Session,  # noqa: F811
 ) -> None:
-    """Failure mode 6: NULL peer_avg_price / peer_buy / peer_sell must be accepted."""
+    """NULL peer_avg_price / peer_buy / peer_sell must be accepted."""
     gid = make_game(db_session)
     insert_row(db_session, "market_days", game_id=gid, day=1, peer_avg_price=None)
     insert_row(
@@ -442,7 +442,7 @@ def test_json_columns_round_trip(db_session: Session) -> None:  # noqa: F811
     assert loaded[1] == {"max_price": 2.0, "qty": 4}
 
 
-# --- AC9 ----------------------------------------------------------------------
+# --- no create_all ------------------------------------------------------------
 
 
 def test_nothing_in_app_calls_create_all() -> None:

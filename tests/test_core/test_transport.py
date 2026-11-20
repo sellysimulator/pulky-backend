@@ -1,4 +1,4 @@
-"""Black-box tests for app.core.transport (plan 08, spec section 6.1-6.2)."""
+"""Black-box tests for app.core.transport (spec section 6.1-6.2)."""
 
 import random
 
@@ -125,17 +125,17 @@ def test_losses_full_fraction_loses_everything_when_alone():
 # --- failure modes ---------------------------------------------------------
 
 
-def test_fm1_sharing_does_not_count_non_shippers():
+def test_sharing_does_not_count_non_shippers():
     # spec 14 #19: n = 3 shippers, so P1 loses 6; counting P2 (n = 4) gives 4.
     ship = {"P1": 60, "P2": 0, "P3": 10, "P4": 30}
     assert transport_losses(ship, True, 0.3, True)["P1"] == 6
 
 
-def test_fm2_float_noise_does_not_drop_a_unit():
+def test_float_noise_does_not_drop_a_unit():
     assert transport_losses(SHIP, True, 0.3, True)["P1"] == 6
 
 
-def test_fm3_no_loss_without_failure():
+def test_no_loss_without_failure():
     out = transport_losses(SHIP, False, 0.9, False)
     assert sum(out.values()) == 0
 

@@ -1,4 +1,4 @@
-"""Health routes (spec 13.4): AC3, AC4, failure mode 1."""
+"""Health routes (spec 13.4)."""
 
 import asyncio
 import time
@@ -73,7 +73,7 @@ def test_health_is_ok(client: TestClient) -> None:
 def test_health_answers_ok_with_database_and_redis_unreachable(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """AC3 and failure mode 1: the wake-up probe touches no dependency."""
+    """The wake-up probe touches no dependency."""
     _db_down(monkeypatch)
     patch_settings(monkeypatch, REDIS_ENABLED=True, REDIS_URL="redis://127.0.0.1:1/0")
     monkeypatch.setattr(state_backend, "get_state_backend", lambda: _BrokenBackend())

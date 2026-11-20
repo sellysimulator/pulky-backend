@@ -1,4 +1,4 @@
-"""Black-box tests for section 11: ``app/core/settlement.py`` (spec 8.2)."""
+"""Black-box tests for ``app/core/settlement.py`` (spec 8.2)."""
 
 import pytest
 from hypothesis import given, settings

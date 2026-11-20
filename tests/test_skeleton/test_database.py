@@ -1,4 +1,4 @@
-"""Database base and session (spec 13.5): AC13, AC14, failure mode 6."""
+"""Database base and session (spec 13.5)."""
 
 import subprocess
 import sys
@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_db_base_imports_in_a_fresh_interpreter() -> None:
-    """Failure mode 6: a self-import in app/db/base.py raises ImportError."""
+    """A self-import in app/db/base.py raises ImportError."""
     result = subprocess.run(
         [
             sys.executable,

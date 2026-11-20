@@ -1,4 +1,4 @@
-"""Black-box tests for the host claim (section 15 3.2, criterion 2)."""
+"""Black-box tests for the host claim (spec 11.3)."""
 
 import pytest
 
@@ -47,7 +47,7 @@ async def test_claim_records_the_host_and_never_gives_an_alias(world: World) -> 
 
 @aio
 async def test_host_takes_no_seat(world: World) -> None:
-    # Failure mode 4: the host counted as a player is an off-by-one.
+    # Counting the host as a player is an off-by-one.
     code = await world.create_room()
     await world.seat(code, "p1", 1)
     await world.seat(code, "p2", 2)
@@ -140,7 +140,7 @@ async def test_wrong_secret_from_another_identity_is_refused(world: World) -> No
     "payload", [{}, {"host_secret": ""}, {"host_secret": None}], ids=str
 )
 async def test_empty_secret_claim_is_refused(world: World, payload: dict) -> None:
-    # Failure mode 5: compare_digest("", "") is True without the bool() guard.
+    # compare_digest("", "") is True without the bool() guard.
     code = await world.create_room()
     await world.claim_host(code, "host-1", 900)
 

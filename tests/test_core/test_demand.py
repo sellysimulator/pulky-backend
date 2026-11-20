@@ -1,4 +1,4 @@
-"""Black-box tests for section 09: demand (spec 7.2-7.5, 7.7)."""
+"""Black-box tests for demand (spec 7.2-7.5, 7.7)."""
 
 import itertools
 
@@ -62,7 +62,7 @@ def test_shares_empty_mapping() -> None:
 
 
 def test_shares_zero_reputation_still_gets_share() -> None:
-    # Failure mode 2: share by raw reputation would give P1 exactly 0.
+    # Share by raw reputation would give P1 exactly 0.
     got = shares({"P1": 0.0, "P2": 1.0})
     assert got["P1"] > 0.0
     assert got["P1"] == pytest.approx(0.5 / 2.0, **APPROX)
@@ -103,7 +103,7 @@ def test_draw_demands_returns_ints_for_each_alias() -> None:
 
 
 def test_draw_demands_independent_of_other_aliases() -> None:
-    # Failure mode 1: with one shared stream, removing P1 shifts P2's draw.
+    # With one shared stream, removing P1 shifts P2's draw.
     # Knuth (lam <= 30) consumes a variable number of uniforms, so a shared
     # stream would change P2 for at least some of these seeds/days.
     both = {"P1": 25.0, "P2": 20.0, "P3": 12.0}
@@ -147,7 +147,7 @@ def test_serve_worked_examples() -> None:
 
 
 def test_serve_backlog_from_stock_counts_as_sold() -> None:
-    # Failure mode 3 (spec 14 #5): late backlog served from stock is sold.
+    # Spec 14 #5: late backlog served from stock is sold.
     res = serve(10, 0, 10)
     assert res.sold == 10
     assert res.owed == 10

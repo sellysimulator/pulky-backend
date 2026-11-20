@@ -7,6 +7,7 @@ Spec: `docs/spec/13-deploy.md` section 13.13 (the checklist lives there; this fi
 - Deploy outside class hours. Live state is in process memory, so a deploy or restart ends every running game.
 - Wire changes: ship the backend first, then the frontend, in the same window. An old frontend against a new backend means nobody can play.
 - Never commit a secret. Treat the Firebase service-account JSON as a credential and rotate it if it is ever printed, logged or pasted.
+- `render.yaml`, `.github/workflows/ci.yml` and this file are pinned by `tests/test_deploy/test_deploy_files.py` (CI-gated deploys, one instance while `REDIS_ENABLED` is `false`, no literal secret, the CI steps in order, the coverage floors). Change the test together with the file it pins.
 
 ## One-time setup
 

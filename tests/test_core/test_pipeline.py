@@ -1,4 +1,4 @@
-"""Black-box tests for section 06 Pipeline (spec 5.6)."""
+"""Black-box tests for Pipeline (spec 5.6)."""
 
 import pytest
 
@@ -41,7 +41,7 @@ def test_item_returns_exactly_length_cycles_later(length: int) -> None:
 
 
 def test_length_one_is_delivered_next_day_not_same_day_not_two_days() -> None:
-    """Failure mode 6: off-by-one in the pipeline."""
+    """Guards against an off-by-one in the pipeline."""
     p = Pipeline(1, ["s0"])
     got = {}
     for day in range(1, 6):
