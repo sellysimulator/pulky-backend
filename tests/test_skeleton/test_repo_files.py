@@ -100,6 +100,8 @@ def test_dockerignore_excludes_env_and_tests() -> None:
     }
     assert ".env" in lines or ".env*" in lines
     assert "tests" in lines
+    # The image runs `alembic upgrade head` at startup.
+    assert "alembic" not in lines and "alembic.ini" not in lines
 
 
 def test_gitignore_excludes_env_but_keeps_the_template() -> None:
@@ -114,6 +116,9 @@ def test_dockerfile_is_the_specified_one() -> None:
     assert "--http h11" in text and "--proxy-headers" in text
     assert "app.main:application" in text
     assert "FORWARDED_ALLOW_IPS" in text
+    # Free Render instances have no pre-deploy step: migrate, then serve.
+    cmd = text[text.index("CMD [") :]
+    assert '"alembic upgrade head && exec uvicorn app.main:application' in cmd
 
 
 def _docker_available() -> bool:

@@ -39,7 +39,9 @@ venv/bin/mypy app
 docker build -t pulky-backend .
 ```
 
-Migrations are Alembic only (`alembic upgrade head`); never `create_all()` at startup. After a
+Migrations are Alembic only (`alembic upgrade head`); never `create_all()` at startup. The
+container runs `alembic upgrade head` at startup, before uvicorn (Dockerfile CMD), because free
+Render instances have no pre-deploy command. After a
 migration change, regenerate the reviewed DDL `db/schema.postgres.sql` with
 `python3 ../../scripts/db/gen_ddl.py --backend .` (Docker): the `dbschema` suite fails when it
 or the models drift from the migrations.
