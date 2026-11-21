@@ -191,6 +191,16 @@ def test_sanitise_display_name_collapses_whitespace() -> None:
     assert sanitise_display_name("La     Chula   Rosa", FALLBACK) == "La Chula Rosa"
 
 
+def test_sanitise_display_name_whitespace_controls_separate_words() -> None:
+    assert sanitise_display_name("La\tChula\nRosa", FALLBACK) == "La Chula Rosa"
+    assert sanitise_display_name("a\r\nb\x0bc\x0cd", FALLBACK) == "a b c d"
+
+
+def test_sanitise_display_name_retrims_after_the_clamp() -> None:
+    # 23 letters, then a space at index 23: the clamp would otherwise keep it.
+    assert sanitise_display_name("x" * 23 + " yz", FALLBACK) == "x" * 23
+
+
 def test_sanitise_display_name_keeps_accents_and_exact_length() -> None:
     assert sanitise_display_name("Pulquería Ñandú", FALLBACK) == "Pulquería Ñandú"
     assert sanitise_display_name("ñ" * 24, FALLBACK) == "ñ" * 24

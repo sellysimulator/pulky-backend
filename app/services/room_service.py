@@ -80,9 +80,12 @@ def find_alias_for_identity(room: dict, identity: str | None) -> str | None:
 def sanitise_display_name(raw: object, fallback: str) -> str:
     if not isinstance(raw, str):
         return fallback
-    stripped = "".join(c for c in raw if not unicodedata.category(c).startswith("C"))
+    # Whitespace controls separate words, so they become spaces before every other
+    # control/format character is dropped (game_stack.md, "Display names").
+    spaced = re.sub(r"[\t\n\r\v\f]", " ", raw)
+    stripped = "".join(c for c in spaced if not unicodedata.category(c).startswith("C"))
     collapsed = re.sub(r"\s+", " ", stripped).strip()
-    return collapsed[:MAX_DISPLAY_NAME] or fallback
+    return collapsed[:MAX_DISPLAY_NAME].strip() or fallback
 
 
 def seats_taken(room: dict) -> int:
