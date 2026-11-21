@@ -187,6 +187,55 @@ def test_a_row_that_already_has_a_user_is_never_touched(
     assert other["user_id"] == thief and other["guest_identity"] is None
 
 
+def host_user_ids(db: Session) -> dict[str, int | None]:
+    db.rollback()
+    rows = db.execute(text("SELECT room_code, host_user_id FROM games")).all()
+    return {str(code): host for code, host in rows}
+
+
+@pytest.mark.dbschema
+def test_a_claim_never_touches_the_host_record(
+    api: TestClient,
+    factory: Callable[[], Session],
+    db_session: Session,
+    firebase_tokens: dict[str, Any],
+    engine: PulkyEngine,
+) -> None:
+    """A claim moves participant rows only (spec 13.4): a guest-hosted game keeps no
+    host, even when the claimed guest id is the host's own, and a signed-in host's
+    record stays theirs."""
+    guest = guest_id(1)
+    host_pk = get_or_create_user(db_session, "uid-host", "Host").id
+    db_session.commit()
+    persist(
+        make_room(
+            engine,
+            code="GHO222",
+            identities={"P1": guest, "P2": guest_id(2)},
+            host_identity=guest,
+        ),
+        factory,
+    )
+    persist(
+        make_room(
+            engine,
+            code="SHO222",
+            identities={"P1": guest, "P2": guest_id(3)},
+            host_identity="uid-host",
+            host_uid="uid-host",
+        ),
+        factory,
+    )
+    before = host_user_ids(db_session)
+    assert before == {"GHO222": None, "SHO222": host_pk}
+    bearer = sign_in(firebase_tokens, "uid-claimer")
+    res = api.post(CLAIM, json={"guest_identity": guest}, headers=bearer)
+    assert res.status_code == 200 and res.json() == {"claimed": 2}
+    assert host_user_ids(db_session) == before
+    hosted = api.get("/api/v1/users/me/hosted-games", headers=bearer)
+    assert hosted.status_code == 200 and hosted.json() == {"games": []}
+
+
 @pytest.mark.dbschema
 def test_second_account_cannot_claim_what_the_first_already_claimed(
     api: TestClient,

@@ -284,6 +284,15 @@ def _start_refusal(sid: str, code: str, message: str) -> Emit:
     return Emit(sid, "join_error", {"message": message, "room_code": code})
 
 
+def _record_host_uid(room: dict, sid: str) -> None:
+    """Keep the starting connection's verified uid as the game's host record (spec
+    11.3, 13.5): server-only, never sent, read only at persist. A guest connection
+    leaves it unset; the first start wins."""
+    uid = sockets_manager.get_socket_manager().sid_to_verified_uid.get(sid)
+    if uid and not room.get("host_uid"):
+        room["host_uid"] = uid
+
+
 @sio.event
 @guarded("join_error", echo_room_code=True)
 async def start_game(sid: str, data: dict | None = None) -> None:
@@ -305,6 +314,7 @@ async def start_game(sid: str, data: dict | None = None) -> None:
                     _start_refusal(sid, code, reason or room_service.START_ALREADY)
                 )
             else:
+                _record_host_uid(room, sid)
                 emits = game_service.start(room, state.next_seq)
                 await state.save_room(room["room_code"], room)
     await room_service.send(emits)

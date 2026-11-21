@@ -57,6 +57,7 @@ def new_room_document(
         "host_secret": host_secret,
         "host_sid": None,
         "host_identity": None,
+        "host_uid": None,
         "host_display_name": host_display_name,
         "participants": {},
         "sid_to_alias": {},

@@ -25,12 +25,6 @@ def auth_client() -> TestClient:
     async def me(user: dict = Depends(deps.get_current_firebase_user)) -> dict:
         return user
 
-    @probe.get("/maybe")
-    async def maybe(
-        user: dict | None = Depends(deps.get_optional_firebase_user),
-    ) -> Any:
-        return {"user": user}
-
     return TestClient(probe)
 
 
@@ -154,36 +148,6 @@ def test_current_user_503_when_firebase_is_unconfigured(
     response = auth_client.get("/me", headers={"Authorization": "Bearer anything"})
     assert response.status_code == 503
     assert response.json() == {"detail": UNAVAILABLE}
-
-
-def test_optional_user_is_none_without_a_header(
-    auth_client: TestClient, firebase_tokens: FirebaseTokens
-) -> None:
-    response = auth_client.get("/maybe")
-    assert response.status_code == 200
-    assert response.json() == {"user": None}
-
-
-def test_optional_user_is_none_without_a_header_when_unconfigured(
-    auth_client: TestClient,
-) -> None:
-    assert auth_client.get("/maybe").json() == {"user": None}
-
-
-def test_optional_user_401_for_an_invalid_token(
-    auth_client: TestClient, firebase_tokens: FirebaseTokens
-) -> None:
-    response = auth_client.get("/maybe", headers={"Authorization": "Bearer nope"})
-    assert response.status_code == 401
-    assert response.json() == {"detail": SIGN_IN}
-
-
-def test_optional_user_returns_claims_for_a_valid_token(
-    auth_client: TestClient, firebase_tokens: FirebaseTokens
-) -> None:
-    firebase_tokens["good"] = {"uid": "u1"}
-    response = auth_client.get("/maybe", headers={"Authorization": "Bearer good"})
-    assert response.json() == {"user": {"uid": "u1"}}
 
 
 @pytest.mark.parametrize("claims", [{}, {"uid": ""}, {"uid": 7}, {"sub": "u1"}])

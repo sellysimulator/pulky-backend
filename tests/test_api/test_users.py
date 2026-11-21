@@ -1,5 +1,6 @@
 # ruff: noqa: F811
-"""Black-box tests for the user routes (profile, stats, games played)."""
+"""Black-box tests for the user routes (profile, stats, games played, games
+hosted)."""
 
 from collections.abc import Callable
 from datetime import datetime
@@ -56,6 +57,7 @@ ITEM_KEYS = {
     "rank",
     "total_profit",
 }
+HOSTED_KEYS = {"game_id", "room_code", "finished_at", "player_count", "ended_early"}
 ANA = "uid-ana-7731"
 BOB = "uid-bob-4402"
 
@@ -93,6 +95,7 @@ ROUTES = [
     ("GET", "/api/v1/users/me/stats"),
     ("GET", "/api/v1/users/me/games"),
     ("GET", f"/api/v1/users/me/games/{'a' * 32}"),
+    ("GET", "/api/v1/users/me/hosted-games"),
 ]
 
 
@@ -117,10 +120,13 @@ def engines() -> dict[str, PulkyEngine]:
 def world(
     api: TestClient, factory: Callable[[], Session], engines: dict[str, PulkyEngine]
 ) -> dict[str, Any]:
-    """Ana played A (as P1) and B (as P2) and hosted D; Bob played C only.
+    """Ana played A (as P1) and B (as P2) and hosted D and E signed in; Bob played
+    C and hosted F signed in. Every host record comes from the verified uid that
+    start_game kept (``host_uid``), each host's row already existing.
 
     B finished latest but was written first, A finished earlier but was written
-    later, so neither insertion order nor start time orders the list correctly.
+    later, so neither insertion order nor start time orders the list correctly;
+    likewise E, hosted later, was written before D.
     """
     rooms = {
         "B": make_room(
@@ -144,13 +150,32 @@ def world(
             started_at="2026-10-13T10:00:00Z",
             finished_at="2026-10-13T11:00:00Z",
         ),
+        "E": make_room(
+            engines["B"],
+            code="EEE222",
+            identities={"P1": guest_id(36), "P2": guest_id(37)},
+            host_identity=ANA,
+            host_uid=ANA,
+            started_at="2026-10-15T10:00:00Z",
+            finished_at="2026-10-15T11:00:00Z",
+        ),
         "D": make_room(
             engines["D"],
             code="DDD222",
             identities={"P1": guest_id(34), "P2": guest_id(35)},
             host_identity=ANA,
+            host_uid=ANA,
             started_at="2026-10-14T10:00:00Z",
             finished_at="2026-10-14T11:00:00Z",
+        ),
+        "F": make_room(
+            engines["C"],
+            code="FFF222",
+            identities={"P1": guest_id(38), "P2": guest_id(39)},
+            host_identity=BOB,
+            host_uid=BOB,
+            started_at="2026-10-16T10:00:00Z",
+            finished_at="2026-10-16T11:00:00Z",
         ),
     }
     ids = {key: persist(room, factory) for key, room in rooms.items()}
@@ -447,6 +472,55 @@ def test_the_games_list_holds_only_played_games_newest_first(
 
 
 @pytest.mark.dbschema
+def test_the_hosted_list_holds_only_the_callers_hosted_games_newest_first(
+    api: TestClient,
+    world: dict[str, Any],
+    engines: dict[str, PulkyEngine],
+    firebase_tokens: dict[str, Any],
+) -> None:
+    ids, rooms = world["ids"], world["rooms"]
+    res = api.get(
+        "/api/v1/users/me/hosted-games", headers=sign_in(firebase_tokens, ANA)
+    )
+    assert res.status_code == 200
+    games = res.json()["games"]
+    assert [g["game_id"] for g in games] == [ids["E"], ids["D"]]
+    for item, key, engine in zip(
+        games, ("E", "D"), (engines["B"], engines["D"]), strict=True
+    ):
+        assert set(item) == HOSTED_KEYS
+        assert item["room_code"] == rooms[key]["room_code"]
+        assert when(item["finished_at"]) == when(rooms[key]["finished_at"])
+        assert item["player_count"] == len(engine.aliases)
+        assert item["ended_early"] is engine.ended_early
+    assert games[0]["ended_early"] is True and games[1]["ended_early"] is False
+    # each hosted entry opens on the open results route
+    assert api.get(f"/api/v1/games/id/{ids['E']}/results").status_code == 200
+    bob = api.get(
+        "/api/v1/users/me/hosted-games", headers=sign_in(firebase_tokens, BOB)
+    )
+    assert [g["game_id"] for g in bob.json()["games"]] == [ids["F"]]
+    nobody = sign_in(firebase_tokens, "uid-nobody-0001")
+    spoof = f"?uid={ANA}&firebase_uid={ANA}"
+    empty = api.get("/api/v1/users/me/hosted-games" + spoof, headers=nobody)
+    assert empty.status_code == 200 and empty.json() == {"games": []}
+
+
+@pytest.mark.dbschema
+def test_hosting_never_reaches_the_played_list_stats_or_detail(
+    api: TestClient, world: dict[str, Any], firebase_tokens: dict[str, Any]
+) -> None:
+    bearer = sign_in(firebase_tokens, BOB)
+    ids = world["ids"]
+    played = api.get("/api/v1/users/me/games", headers=bearer).json()["games"]
+    assert [g["game_id"] for g in played] == [ids["C"]]
+    stats = api.get("/api/v1/users/me/stats", headers=bearer).json()
+    assert stats["games_played"] == 1
+    detail = api.get(f"/api/v1/users/me/games/{ids['F']}", headers=bearer)
+    assert detail.status_code == 404 and detail.json() == NOT_FOUND
+
+
+@pytest.mark.dbschema
 def test_detail_returns_the_results_plus_my_alias(
     api: TestClient, world: dict[str, Any], firebase_tokens: dict[str, Any]
 ) -> None:
@@ -512,6 +586,7 @@ def test_no_user_route_carries_an_identity_or_a_credential(
         ("GET", "/api/v1/users/me"),
         ("GET", "/api/v1/users/me/stats"),
         ("GET", "/api/v1/users/me/games"),
+        ("GET", "/api/v1/users/me/hosted-games"),
         ("GET", f"/api/v1/users/me/games/{ids['A']}"),
         ("GET", f"/api/v1/users/me/games/{ids['B']}"),
         ("POST", "/api/v1/users/upsert"),
@@ -547,7 +622,14 @@ class Counter:
 
 
 @pytest.mark.dbschema
-@pytest.mark.parametrize("path", ["/api/v1/users/me/games", "/api/v1/users/me/stats"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/users/me/games",
+        "/api/v1/users/me/stats",
+        "/api/v1/users/me/hosted-games",
+    ],
+)
 def test_query_count_does_not_grow_with_the_number_of_games(
     path: str,
     api: TestClient,
@@ -565,6 +647,7 @@ def test_query_count_does_not_grow_with_the_number_of_games(
                     engines["A"],
                     code=f"Q{n:02d}222",
                     identities={"P1": ANA, "P2": guest_id(900 + n)},
+                    host_uid=ANA,
                     started_at=f"2026-11-{n:02d}T10:00:00Z",
                     finished_at=f"2026-11-{n:02d}T11:00:00Z",
                 ),
@@ -585,7 +668,7 @@ def test_query_count_does_not_grow_with_the_number_of_games(
     finally:
         counter.stop()
     assert small.status_code == large.status_code == 200
-    if path.endswith("games"):
+    if path.endswith("games"):  # played or hosted: Ana did both in each game
         assert len(small.json()["games"]) == 1
         assert len(large.json()["games"]) == 9
     else:

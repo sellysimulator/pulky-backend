@@ -285,10 +285,18 @@ def test_lobby_payload_orders_by_alias_number() -> None:
 def test_lobby_payload_carries_no_credential() -> None:
     room = make_room(3)
     room["host_identity"] = "host-identity-secret"
+    room["host_uid"] = "host-uid-secret"
     room["host_sid"] = HOST_SID
     payload = lobby_payload(room, 4)
-    for key in ("identity", "session_token", "host_secret", "host_identity"):
+    for key in (
+        "identity",
+        "session_token",
+        "host_secret",
+        "host_identity",
+        "host_uid",
+    ):
         assert not contains_key(payload, key)
+    assert not contains_value(payload, "host-uid-secret")
     for n in (1, 2, 3):
         assert not contains_value(payload, f"identity-secret-{n}")
         assert not contains_value(payload, f"token-secret-{n}")

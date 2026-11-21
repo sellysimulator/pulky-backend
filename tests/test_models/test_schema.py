@@ -67,7 +67,7 @@ PARTICIPANTS_COLUMNS = {
     "refund_futures_cancelled",
 } | TIMESTAMPS  # fmt: skip
 GAMES_COLUMNS = {
-    "id", "public_id", "room_code", "host_user_id", "host_display_name",
+    "id", "public_id", "room_code", "host_user_id",
     "rng_seed", "duration_days", "days_played", "ended_early", "player_count",
     "started_at", "finished_at",
 } | TIMESTAMPS  # fmt: skip
@@ -332,7 +332,6 @@ def test_not_null_columns(engine: Engine, table: str, column: str) -> None:
         ("games", "rng_seed", "bigint"),
         ("games", "duration_days", "integer"),
         ("games", "ended_early", "boolean"),
-        ("games", "host_display_name", "character varying(24)"),
         ("games", "started_at", "timestamp with time zone"),
         ("games", "finished_at", "timestamp with time zone"),
         ("participants", "alias", "character varying(4)"),
@@ -397,6 +396,13 @@ def test_room_code_is_indexed_but_never_part_of_a_unique_key(engine: Engine) -> 
 def test_secondary_indexes(engine: Engine) -> None:
     assert "user_id" in indexed_leading_columns(engine, "participants")
     assert "guest_identity" in indexed_leading_columns(engine, "participants")
+    assert "host_user_id" in indexed_leading_columns(engine, "games")
+
+
+def test_the_hosted_games_index_is_named_and_not_unique(engine: Engine) -> None:
+    """The profile's hosted list reads games by ``host_user_id`` (spec 13.5)."""
+    found = indexes(engine, "games")["ix_games_host_user_id"]
+    assert found == (False, False, ["host_user_id"])
 
 
 @pytest.mark.parametrize(
@@ -525,4 +531,38 @@ def test_downgrade_removes_everything_and_upgrade_restores(
         assert set(columns(eng, "player_days")) == PLAYER_DAYS_COLUMNS
     finally:
         command.upgrade(cfg, "head")
+        eng.dispose()
+
+
+def test_host_records_downgrade_restores_the_host_name_and_drops_the_index(
+    pg_url: str,  # noqa: F811
+) -> None:
+    """0002 down: a stored game gets ``host_display_name`` back as "Host" and
+    ``ix_games_host_user_id`` is gone; up again restores head."""
+    cfg = alembic_config(pg_url)
+    eng = create_engine(pg_url)
+    try:
+        with eng.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO games (public_id, room_code, rng_seed, duration_days, "
+                    "days_played, ended_early, player_count, started_at, finished_at) "
+                    "VALUES (:p, 'DWN222', 1, 7, 7, FALSE, 2, "
+                    "'2026-10-12 14:00:00+00', '2026-10-12 15:00:00+00')"
+                ),
+                {"p": "d" * 32},
+            )
+        command.downgrade(cfg, "0001")
+        assert "ix_games_host_user_id" not in indexes(eng, "games")
+        assert columns(eng, "games")["host_display_name"]["nullable"] is False
+        with eng.connect() as conn:
+            name = conn.execute(text("SELECT host_display_name FROM games")).scalar()
+        assert name == "Host"
+        command.upgrade(cfg, "head")
+        assert set(columns(eng, "games")) == GAMES_COLUMNS
+        assert "ix_games_host_user_id" in indexes(eng, "games")
+    finally:
+        command.upgrade(cfg, "head")
+        with eng.begin() as conn:
+            conn.execute(text("DELETE FROM games"))
         eng.dispose()

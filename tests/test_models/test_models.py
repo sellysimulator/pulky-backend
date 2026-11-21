@@ -18,9 +18,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 GAME_INSERT = text(
     "INSERT INTO games (public_id, room_code, rng_seed, duration_days, days_played, "
-    "ended_early, player_count, started_at, finished_at, host_display_name) "
+    "ended_early, player_count, started_at, finished_at) "
     "VALUES ('0123456789abcdef0123456789abcdef', 'ABC234', 42, 14, 14, FALSE, 4, "
-    "'2026-10-12 14:00:00+00', '2026-10-12 15:00:00+00', 'Ms. Ruiz')"
+    "'2026-10-12 14:00:00+00', '2026-10-12 15:00:00+00')"
 )
 
 
@@ -335,7 +335,6 @@ def test_two_decimal_floats_read_back_exactly(
         player_count=1,
         started_at=datetime(2026, 10, 12, 14, tzinfo=UTC),
         finished_at=datetime(2026, 10, 12, 15, tzinfo=UTC),
-        host_display_name="Ms. Ruiz",
     )
     db_session.add(game)
     db_session.flush()

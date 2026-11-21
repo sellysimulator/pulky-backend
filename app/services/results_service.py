@@ -33,7 +33,6 @@ def results_response(game: StoredGame) -> dict:
     return {
         "game_id": game.game_id,
         "room_code": game.room_code,
-        "host_display_name": game.host_display_name,
         "duration_days": game.duration_days,
         "days_played": game.days_played,
         "ended_early": game.ended_early,

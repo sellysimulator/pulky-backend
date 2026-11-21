@@ -67,6 +67,7 @@ ROOM_BANNED_KEYS: tuple[str, ...] = (
     "identity",
     "session_token",
     "host_secret",
+    "host_uid",
 )
 ROOM_BANNED_PREFIXES: tuple[str, ...] = ("cost_", "revenue_", "refund_")
 SHOWN_CONFIG_PATHS = {

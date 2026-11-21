@@ -21,7 +21,6 @@ CREATE TABLE public.games (
     public_id character(32) NOT NULL,
     room_code character(6) NOT NULL,
     host_user_id bigint,
-    host_display_name character varying(24) NOT NULL,
     rng_seed bigint NOT NULL,
     duration_days integer NOT NULL,
     days_played integer NOT NULL,
@@ -233,6 +232,7 @@ ALTER TABLE ONLY public.player_days
     ADD CONSTRAINT uq_player_days_game_id_day_alias UNIQUE (game_id, day, alias);
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT uq_users_firebase_uid UNIQUE (firebase_uid);
+CREATE INDEX ix_games_host_user_id ON public.games USING btree (host_user_id);
 CREATE INDEX ix_games_room_code ON public.games USING btree (room_code);
 CREATE INDEX ix_participants_guest_identity ON public.participants USING btree (guest_identity);
 CREATE INDEX ix_participants_user_id ON public.participants USING btree (user_id);

@@ -32,17 +32,21 @@ async def connect(sid: str, environ: dict, auth: dict | None = None) -> bool | N
     claims = auth if isinstance(auth, dict) else {}
     id_token = claims.get("idToken")
     guest_id = claims.get("guestId")
+    sockets = sockets_manager.get_socket_manager()
     if id_token:
         decoded = await deps.verify_id_token(id_token)
         if not decoded:
             abuse.close_socket(sid)
             return False  # reject; never downgrade to guest
         identity = str(decoded["uid"])
+        # The one place a verified uid is marked: what start_game records as the
+        # host (spec 11.3), never a guest id however it looks.
+        sockets.sid_to_verified_uid[sid] = identity
     elif isinstance(guest_id, str) and GUEST_RE.match(guest_id):
         identity = guest_id
     else:
         identity = f"guest_{uuid.uuid4()}"
-    sockets_manager.get_socket_manager().sid_to_identity[sid] = identity
+    sockets.sid_to_identity[sid] = identity
     return None
 
 

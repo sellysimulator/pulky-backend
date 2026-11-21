@@ -1,4 +1,5 @@
-"""Profile routes: upsert, me, stats, games list and detail (13.4)."""
+"""Profile routes: upsert, me, stats, played games list and detail, hosted games
+(13.4)."""
 
 from typing import Any
 
@@ -11,6 +12,7 @@ from app.models.user import User
 from app.schemas.results import MyResultsResponse
 from app.schemas.user import (
     GameListResponse,
+    HostedGameListResponse,
     UpsertRequest,
     UserResponse,
     UserStatsResponse,
@@ -72,6 +74,15 @@ def my_games(
 ) -> dict[str, Any]:
     user = user_service.find_user(db, _uid(claims))
     return {"games": user_service.list_user_games(db, user)}
+
+
+@router.get("/users/me/hosted-games", response_model=HostedGameListResponse)
+def my_hosted_games(
+    claims: dict[str, Any] = Depends(deps.get_current_firebase_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    user = user_service.find_user(db, _uid(claims))
+    return {"games": user_service.list_hosted_games(db, user)}
 
 
 @router.get("/users/me/games/{public_id}", response_model=MyResultsResponse)

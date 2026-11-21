@@ -65,12 +65,3 @@ async def get_current_firebase_user(
     if token is None:
         raise HTTPException(status_code=401, detail=SIGN_IN_REQUIRED)
     return await _verified(token)
-
-
-async def get_optional_firebase_user(
-    authorization: str | None = Header(None),
-) -> dict[str, Any] | None:
-    token = _bearer_token(authorization)
-    if token is None:
-        return None
-    return await _verified(token)

@@ -68,7 +68,6 @@ FINISHED = "2026-10-12T15:00:00Z"
 RESULTS_KEYS = {
     "game_id",
     "room_code",
-    "host_display_name",
     "duration_days",
     "days_played",
     "ended_early",
@@ -162,6 +161,7 @@ def make_room(
     code: str = "ABC234",
     identities: dict[str, str] | None = None,
     host_identity: str | None = None,
+    host_uid: str | None = None,
     started_at: str = STARTED,
     finished_at: str = FINISHED,
     host_name: str = "Ms. Ruiz",
@@ -182,6 +182,7 @@ def make_room(
     room["finished_at"] = finished_at
     room["game_id"] = game_id or uuid.uuid4().hex
     room["host_identity"] = host_identity or guest_id(9999)
+    room["host_uid"] = host_uid
     room["seed"] = engine.seed
     room["participants"] = {
         alias: {
@@ -200,6 +201,8 @@ def make_room(
 def secrets_of(room: dict[str, Any]) -> list[str]:
     """Every credential and identity of a room that no response may carry."""
     out = [room["host_secret"], str(room["host_identity"])]
+    if room.get("host_uid"):
+        out.append(room["host_uid"])
     for p in room["participants"].values():
         out += [p["identity"], p["session_token"]]
     return out
@@ -433,7 +436,7 @@ def test_results_metadata_and_shape(
     assert set(body) == RESULTS_KEYS
     assert body["game_id"] == gid
     assert body["room_code"] == "XYZ789"
-    assert body["host_display_name"] == "Ms. Ruiz"
+    assert "Ms. Ruiz" not in json.dumps(body)  # the host's name is never stored
     assert body["duration_days"] == room["config"]["duration_days"]
     assert body["days_played"] == len(natural_engine.market_history())
     assert body["ended_early"] is False
@@ -523,6 +526,27 @@ def test_games_under_a_reused_room_code_are_each_served_by_their_own_id(
         check_parity(body, engine)
     # there is no route by room code
     assert api.get("/api/v1/games/ABC234/results").status_code == 404
+
+
+def test_results_never_expire_and_need_no_live_room_or_credential(
+    api: TestClient, factory: Callable[[], Session], natural_engine: PulkyEngine
+) -> None:
+    """The results link is the public id alone and never expires: a game finished
+    years ago, whose room is long gone, is served to anyone without a secret or
+    bearer (spec 13.4)."""
+    gid = persist(
+        make_room(
+            natural_engine,
+            started_at="2001-01-01T09:00:00Z",
+            finished_at="2001-01-01T10:00:00Z",
+        ),
+        factory,
+    )
+    assert asyncio.run(get_state_service().get_room("ABC234")) is None
+    res = api.get(f"/api/v1/games/id/{gid}/results")
+    assert res.status_code == 200
+    assert res.json()["game_id"] == gid
+    assert res.json()["finished_at"] == "2001-01-01T10:00:00Z"
 
 
 def test_unknown_code_and_unknown_id_answer_404(

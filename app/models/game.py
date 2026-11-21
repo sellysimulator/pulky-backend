@@ -64,10 +64,14 @@ class Game(TimestampMixin, Base):
     # always ROOM_CODE_LENGTH (6), so PostgreSQL never pads a stored value.
     public_id: Mapped[str] = mapped_column(CHAR(32), unique=True)
     room_code: Mapped[str] = mapped_column(CHAR(6), index=True)
+    # The host's account, set only when a verified signed-in host started the game
+    # and already had a row; read only by the profile's hosted list (spec 13.5).
     host_user_id: Mapped[int | None] = mapped_column(
-        _BigId, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        _BigId,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
-    host_display_name: Mapped[str] = mapped_column(String(MAX_DISPLAY_NAME))
     rng_seed: Mapped[int] = mapped_column(BigInteger)
     duration_days: Mapped[int] = _int()
     days_played: Mapped[int] = _int()

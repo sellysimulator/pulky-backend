@@ -85,6 +85,15 @@ message at startup and every signed-in user is rejected.
   monkeypatch the module attribute. Persistence is reached the same way, through the module
   (`db_service.persist_finished_game`, as `play_service` does), because the socket tests that
   run without a database replace it there.
+- **Host records** (spec 11.3, 13.5): `games.host_user_id` is set only from a uid a Firebase
+  token verified at the handshake (`SocketManager.sid_to_verified_uid`, filled on the token
+  branch of `connection.py` only, never from a missing `guest_` prefix). `start_game` copies
+  the starting socket's verified uid into the room's server-only `host_uid` after the secret
+  passed (first start wins; dashboard starts included); persist looks it up in `users` and
+  stores NULL when there is no row, never creating one. Its one reader is `GET
+  /users/me/hosted-games`; it grants nothing (no export, claim, results or host authority) and
+  `host_uid` is never sent (`tests/test_sockets/test_host_record.py`). Live host recovery
+  stays on `host_identity`.
 - Handlers that can fail are wrapped in `@guarded()`; errors never carry exception text.
 - REST errors are `HTTPException` with a string `detail`; never return `str(e)`.
 - Never log secrets, tokens, identities or payloads.
@@ -110,7 +119,7 @@ message at startup and every signed-in user is rejected.
   the room is gone). It may carry only what the results already show: never a uid, email, user
   id, guest identity, session token or host secret (`tests/test_api/test_export.py`, the
   `test_privacy_*` tests, run without a database). It names every pulquería by its alias, `P<N>` by
-  seat, with no display name (`host_display_name` included); the screens keep the names. Built
+  seat, with no display name (the host's name is not stored at all); the screens keep the names. Built
   files sit in `export_service`'s LRU (64 files, keyed by `(public_id, format)`, in process
   memory: per instance, empty after a restart, never expiring since a finished game never
   changes); a cached request reads no database but still counts against the limit. Its guard is the per-IP `ROUTE_LIMITS` entry
