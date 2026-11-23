@@ -35,7 +35,7 @@ tests/                  conftest.py holds the shared test doubles
 python3.11 -m venv venv && venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 venv/bin/uvicorn app.main:application --reload --port 8080
 venv/bin/pytest -m "not dbschema"
-venv/bin/pytest -m dbschema      # needs a running Docker daemon (Testcontainers postgres:17)
+venv/bin/pytest -m dbschema      # needs a running Docker daemon (Testcontainers postgres:18)
 venv/bin/ruff check app tests
 venv/bin/black --check app tests
 venv/bin/mypy app
@@ -59,12 +59,15 @@ or the models drift from the migrations.
 
 Settings are environment variables (a local dotenv file works): see the template file
 `.env.example`, where an empty value means the default. `CORS_ORIGINS` never contains
-`"*"`. The database is PostgreSQL (`DB_*`, port 5432), in production the database `pulkydb` on
-the Aiven service shared by the four Novus games: `DB_SSL_CA` (that service's CA, the
-same for all four games, PEM text or path) means `sslmode=verify-full`; without it `DB_REQUIRE_SSL=true` means
-`sslmode=require` (encrypted, not verified). Every session runs in UTC (`db_connect_args`).
-`DB_POOL_SIZE` + `DB_MAX_OVERFLOW` default to 2 + 1 = 3 per instance, Pulky's share of
-the shared 20-connection service (budget in `DEPLOY.md`): deploy one game at a time.
+`"*"`. The database is PostgreSQL 18 (`DB_*`, port 5432), in production the database `pulkydb`
+in Pulky's own Neon project (user `neondb_owner`). `DB_HOST` is Neon's direct endpoint, never
+the `-pooler` one: the pooler rejects the `options=-c timezone=UTC` startup parameter.
+`DB_SSL_CA` (the ISRG Root X1 + X2 PEM bundle, the same for all four games, PEM text or path)
+means `sslmode=verify-full`; without it `DB_REQUIRE_SSL=true` means `sslmode=require`
+(encrypted, not verified). Every session runs in UTC (`db_connect_args`).
+`DB_POOL_SIZE` + `DB_MAX_OVERFLOW` default to 7 + 2 = 9 per instance, so a deploy fits
+Pulky's budget of 20 connections (`DEPLOY.md`). Develop against a local Docker PostgreSQL 18,
+not Neon: a local backend against Neon is one more instance and breaks that budget.
 `REDIS_ENABLED=false` means one process and live rooms lost on restart; `true` needs
 `REDIS_URL`. `FIREBASE_SERVICE_ACCOUNT_JSON` unset logs a CRITICAL
 message at startup and every signed-in user is rejected.
@@ -206,7 +209,7 @@ message at startup and every signed-in user is rejected.
 - Every `async def test_*` carries `@pytest.mark.asyncio` (strict mode). Property tests use
   Hypothesis, randomised tests fix their seeds, and no test depends on wall-clock time.
 - Database tests carry `@pytest.mark.dbschema` and use the PostgreSQL fixtures of
-  `tests/fixtures/postgres.py` (`pg_url`, `db_session`: a Testcontainers `postgres:17` with
+  `tests/fixtures/postgres.py` (`pg_url`, `db_session`: a Testcontainers `postgres:18` with
   `alembic upgrade head` applied). Pass `persist_finished_game` a `session_factory` bound to
   the container, never the default one: a developer machine may run PostgreSQL on
   localhost. A model change needs a new Alembic revision, or

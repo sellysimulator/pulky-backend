@@ -1,6 +1,6 @@
 """Shared PostgreSQL fixtures (used by the model, persistence and REST suites).
 
-A Testcontainers ``postgres:17`` with ``alembic upgrade head`` applied. Nothing here
+A Testcontainers ``postgres:18`` with ``alembic upgrade head`` applied. Nothing here
 ever connects to a database named by ``settings``.
 """
 
@@ -15,7 +15,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 ROOT = Path(__file__).resolve().parents[2]
-IMAGE = "postgres:17"
+IMAGE = "postgres:18"
 
 
 def alembic_config(url: str) -> Config:

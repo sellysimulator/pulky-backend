@@ -80,13 +80,13 @@ def test_get_engine_is_lazy_cached_and_a_psycopg_engine() -> None:
     assert isinstance(engine, Engine)
     assert db_session.get_engine() is engine
     assert engine.url.drivername == "postgresql+psycopg"
-    # 2 + 1 per instance: Selly, Pulky and Beery 3 each, Lemony 4, plus a
-    # side-by-side deploy instance (at most 4) and alembic and psql (1 each)
-    # fit the shared 20-connection service (DEPLOY.md)
-    assert engine.pool.size() == 2  # type: ignore[attr-defined]
-    assert engine.pool._max_overflow == 1  # type: ignore[attr-defined]
-    pulky = engine.pool.size() + engine.pool._max_overflow  # type: ignore[attr-defined]
-    assert 2 * 3 + pulky + 4 + 4 + 2 <= 20
+    # 7 + 2 per instance: during a deploy the old and new instance run side by
+    # side, plus alembic and one psql (1 each), within Pulky's budget of 20
+    # connections (DEPLOY.md)
+    assert engine.pool.size() == 7  # type: ignore[attr-defined]
+    assert engine.pool._max_overflow == 2  # type: ignore[attr-defined]
+    per_instance = engine.pool.size() + engine.pool._max_overflow  # type: ignore[attr-defined]
+    assert 2 * per_instance + 2 <= 20
     assert engine.pool.timeout() == 10  # type: ignore[attr-defined]
 
 

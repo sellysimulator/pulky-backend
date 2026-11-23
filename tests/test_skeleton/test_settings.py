@@ -54,8 +54,8 @@ def test_defaults_equal_the_spec_table(pristine: None) -> None:
     assert s.DB_DATABASE == "pulkydb"
     assert s.DB_REQUIRE_SSL is True
     assert s.DB_SSL_CA == ""
-    assert s.DB_POOL_SIZE == 2
-    assert s.DB_MAX_OVERFLOW == 1
+    assert s.DB_POOL_SIZE == 7
+    assert s.DB_MAX_OVERFLOW == 2
     assert s.REDIS_ENABLED is False
     assert s.REDIS_URL == ""
     assert s.FIREBASE_SERVICE_ACCOUNT_JSON == ""
