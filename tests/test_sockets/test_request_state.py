@@ -56,7 +56,7 @@ async def test_the_host_gets_a_full_host_state(world: World) -> None:
     assert state["state"] == "running"
     assert state["day"] == 3
     engine = room_engine(before)
-    expected = game_service.host_state(before, 0, True)
+    expected = game_service.host_state(before, engine, 0, True)
     assert norm(strip(state)) == norm(strip(expected))
     for alias in ("P1", "P2"):
         assert len(state["players"][alias]["own_history"]) == 2

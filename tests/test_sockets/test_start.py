@@ -387,12 +387,12 @@ async def test_player_and_host_state_builders(world: World) -> None:
     assert engine is not None
 
     for full in (True, False):
-        state = game_service.player_state(room, "P1", 42, full)
+        state = game_service.player_state(room, engine, "P1", 42, full)
         assert state == norm(
             {"seq": 42, "full": full, **engine.player_view("P1", full)}
         )
 
-        host = game_service.host_state(room, 43, full)
+        host = game_service.host_state(room, engine, 43, full)
         expected: dict[str, Any] = {
             "seq": 43,
             "full": full,
@@ -410,7 +410,7 @@ async def test_host_state_reports_a_disconnected_player(world: World) -> None:
     game = await world.running_game()
     await disconnect("p2")
     room = await world.room(game.code)
-    state = game_service.host_state(room, 50, True)
+    state = game_service.host_state(room, game_service.require_engine(room), 50, True)
     assert state["players"]["P1"]["connected"] is True
     assert state["players"]["P2"]["connected"] is False
 

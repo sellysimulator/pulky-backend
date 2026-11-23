@@ -160,7 +160,7 @@ async def test_disconnects_never_block_pause_or_end_the_game(world: World) -> No
     events = {r[1] for r in world.sm.records[start:]}
     assert events == {"participant_disconnected", "host_disconnected"}
     # and the offline picture reaches the host on its return
-    state = game_service.host_state(room, 99, True)
+    state = game_service.host_state(room, engine, 99, True)
     assert state["players"]["P1"]["connected"] is False
     assert norm(state["state"]) == "running"
 

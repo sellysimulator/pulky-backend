@@ -9,12 +9,13 @@ import pytest
 
 from app.services import game_service
 from app.sockets.handlers.play import preview_decision
-from tests.test_sockets.conftest import World
+from tests.test_sockets.conftest import World, count_engine_builds
 from tests.test_sockets.test_submit import (  # noqa: F401
     PersistSpy,
     _never_touch_a_real_database,
     dec,
     persist,
+    room_engine,
     submit,
 )
 
@@ -95,3 +96,53 @@ async def test_a_lobby_or_finished_room_is_not_running(world: World) -> None:
     await world.finish_early(game.code)
     answer = await preview_decision("p1", ask(game.code, 1))
     assert answer == {"code": "GAME_NOT_RUNNING", "message": MSG_NOT_RUNNING}
+
+
+# ------------------------------------------------------------ engine reuse
+@aio
+async def test_previews_of_an_unchanged_room_build_its_engine_once(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fails against a preview that rebuilds the engine from the room every time."""
+    game = await world.running_game()
+    room = await world.room(game.code)
+    built = count_engine_builds(monkeypatch)
+    first = await preview_decision("p1", ask(game.code, 1, order_spot=12))
+    second = await preview_decision("p1", ask(game.code, 1, order_spot=20))
+    assert len(built) == 1
+    engine = room_engine(room)
+    draft = ask(game.code, 1, order_spot=20)["decision"]
+    assert second["preview"] == engine.decision_preview("P1", draft)
+    assert first["preview"]["outlay"] != second["preview"]["outlay"]
+
+
+@aio
+async def test_a_preview_follows_the_room_once_it_changes(world: World) -> None:
+    game = await world.running_game()
+    await preview_decision("p1", ask(game.code, 1))
+    await submit(game, "P1", 1)
+    await submit(game, "P2", 1)  # day 1 resolves
+    answer = await preview_decision("p1", ask(game.code, 2, order_spot=5))
+    engine = room_engine(await world.room(game.code))
+    draft = ask(game.code, 2, order_spot=5)["decision"]
+    assert answer["preview"] == engine.decision_preview("P1", draft)
+    assert answer["preview"]["day"] == 2
+
+
+@aio
+async def test_a_reissued_room_code_is_never_served_the_old_rooms_engine(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same code and seq, another host secret: another room, so another engine."""
+    game = await world.running_game()
+    await preview_decision("p1", ask(game.code, 1))
+    seq = (await world.room(game.code))["seq"]
+
+    def reissue(room: dict[str, Any]) -> None:
+        room["host_secret"] = "another-room"
+        room["seq"] = seq
+
+    await world.mutate(game.code, reissue)
+    built = count_engine_builds(monkeypatch)
+    await preview_decision("p1", ask(game.code, 1))
+    assert len(built) == 1

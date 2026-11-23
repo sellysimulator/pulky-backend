@@ -97,6 +97,9 @@ message at startup and every signed-in user is rejected.
   /users/me/hosted-games`; it grants nothing (no export, claim, results or host authority) and
   `host_uid` is never sent (`tests/test_sockets/test_host_record.py`). Live host recovery
   stays on `host_identity`.
+- A handler builds the engine from the room once (`game_service.load_engine` /
+  `require_engine`) and passes it to every payload builder (`player_state`, `host_state`,
+  `play_service.resolution_emits`); a builder never loads it again (spec 13.2).
 - Handlers that can fail are wrapped in `@guarded()`; errors never carry exception text.
 - REST errors are `HTTPException` with a string `detail`; never return `str(e)`.
 - Never log secrets, tokens, identities or payloads.
@@ -170,7 +173,9 @@ message at startup and every signed-in user is rejected.
     (`affordable`, the one `submit` uses), tier cards for the draft (`plan_rows`, so the
     Paid-price card follows the typed spot order), offer (`offer_lots`, the one the peer
     market uses) and field messages (`records.decision_field_issues`, the checks
-    `parse_decision` makes). Read-only: no lock, no save, no emit.
+    `parse_decision` makes). Read-only: no lock, no save, no emit. It takes the engine
+    from `game_service.preview_engine` (64 engines cached per process, keyed by room code
+    and checked against `seq` and the host secret), never `load_engine`.
   - `POST /config/preview` (`app/core/previews.py` `config_preview`): every number of the
     host screen's previews, calculator and help examples. It replaces each blank hidden
     default with 0 before computing and nulls every figure that needs it; never fill a

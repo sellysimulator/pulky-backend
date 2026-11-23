@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from app.core.engine import DayOutcome
+from app.core.engine import DayOutcome, PulkyEngine
 from app.core.enums import RoomState
 from app.core.records import parse_decision
 from app.services import db_service, game_service, state_service
@@ -41,7 +41,9 @@ def _sids_for(room: dict, alias: str) -> list[str]:
     return [s for s, a in room["sid_to_alias"].items() if a == alias]
 
 
-def _daily_state_emits(room: dict, next_seq: Callable[[dict], int]) -> list[Emit]:
+def _daily_state_emits(
+    room: dict, engine: PulkyEngine, next_seq: Callable[[dict], int]
+) -> list[Emit]:
     """Daily ``your_state`` to every seated sid (shared seq), then ``host_state``."""
     emits: list[Emit] = []
     state_seq = next_seq(room)
@@ -50,7 +52,7 @@ def _daily_state_emits(room: dict, next_seq: Callable[[dict], int]) -> list[Emit
             Emit(
                 sid,
                 "your_state",
-                game_service.player_state(room, alias, state_seq, False),
+                game_service.player_state(room, engine, alias, state_seq, False),
             )
         )
     host_sid = room.get("host_sid")
@@ -59,7 +61,7 @@ def _daily_state_emits(room: dict, next_seq: Callable[[dict], int]) -> list[Emit
             Emit(
                 host_sid,
                 "host_state",
-                game_service.host_state(room, next_seq(room), False),
+                game_service.host_state(room, engine, next_seq(room), False),
             )
         )
     return emits
@@ -94,7 +96,7 @@ def apply_submission(
         started = time.perf_counter()
         outcome = engine.resolve_day()
         game_service.store_engine(room, engine)
-        emits += resolution_emits(room, outcome, next_seq)
+        emits += resolution_emits(room, engine, outcome, next_seq)
         logger.info(
             "room %s day %d resolved in %d ms",
             code,
@@ -109,7 +111,7 @@ def apply_submission(
             Emit(
                 sid,
                 "your_state",
-                game_service.player_state(room, alias, state_seq, False),
+                game_service.player_state(room, engine, alias, state_seq, False),
             )
         )
     host_sid = room.get("host_sid")
@@ -118,19 +120,20 @@ def apply_submission(
             Emit(
                 host_sid,
                 "host_state",
-                game_service.host_state(room, next_seq(room), False),
+                game_service.host_state(room, engine, next_seq(room), False),
             )
         )
     return emits, False
 
 
 def resolution_emits(
-    room: dict, outcome: DayOutcome, next_seq: Callable[[dict], int]
+    room: dict,
+    engine: PulkyEngine,
+    outcome: DayOutcome,
+    next_seq: Callable[[dict], int],
 ) -> list[Emit]:
-    """The spec 12.3 sequence for a resolved day. The engine must already be stored."""
-    engine = game_service.load_engine(room)
-    if engine is None:
-        raise ValueError("The room has no engine.")
+    """The spec 12.3 sequence for a resolved day, built from ``engine``, the one that
+    resolved it (already stored in the room)."""
     code = room["room_code"]
     if outcome.finished:
         _mark_finished(room)
@@ -157,7 +160,7 @@ def resolution_emits(
                 {"seq": record_seq, "day": outcome.day, "record": record.to_payload()},
             )
         )
-    emits += _daily_state_emits(room, next_seq)
+    emits += _daily_state_emits(room, engine, next_seq)
     if outcome.finished:
         emits.append(
             Emit(
@@ -181,7 +184,7 @@ def end_early(room: dict, next_seq: Callable[[dict], int]) -> list[Emit]:
     engine.end_early()
     game_service.store_engine(room, engine)
     _mark_finished(room)
-    emits = _daily_state_emits(room, next_seq)
+    emits = _daily_state_emits(room, engine, next_seq)
     emits.append(
         Emit(
             room["room_code"],

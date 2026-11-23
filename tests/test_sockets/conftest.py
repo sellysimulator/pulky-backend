@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from app.core.config_models import GameConfig
+from app.core.engine import PulkyEngine
 from app.services import game_service
 from app.services.state_service import get_state_service, reset_state_service
 from app.sockets.handlers.connection import connect
@@ -88,6 +89,19 @@ def all_keys(payload: Any) -> Iterator[str]:
     elif isinstance(payload, (list, tuple)):
         for item in payload:
             yield from all_keys(item)
+
+
+def count_engine_builds(monkeypatch: pytest.MonkeyPatch) -> list[None]:
+    """One entry per engine built from a room's stored payload."""
+    built: list[None] = []
+    real = PulkyEngine.from_payload
+
+    def counting(payload: dict[str, Any], config: GameConfig) -> PulkyEngine:
+        built.append(None)
+        return real(payload, config)
+
+    monkeypatch.setattr(PulkyEngine, "from_payload", staticmethod(counting))
+    return built
 
 
 @dataclass

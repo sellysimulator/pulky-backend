@@ -15,7 +15,7 @@ from app.services import game_service, play_service
 from app.sockets.handlers.connection import disconnect
 from app.sockets.handlers.play import submit_day
 from tests.conftest import contains_key
-from tests.test_sockets.conftest import Game, World, norm
+from tests.test_sockets.conftest import Game, World, count_engine_builds, norm
 from tests.test_sockets.test_submit import (  # noqa: F401
     HISTORY_KEYS,
     LockWatch,
@@ -132,7 +132,7 @@ async def test_resolution_payloads_are_the_engines_own(world: World) -> None:
             assert body["day"] == 2
         if record[1] == "host_state":
             assert record[0] == "host-1"
-            expected = game_service.host_state(room, 0, False)
+            expected = game_service.host_state(room, engine, 0, False)
             body = {k: v for k, v in record[2].items() if k != "seq"}
             assert record[2]["full"] is False
             assert norm(body) == norm({k: v for k, v in expected.items() if k != "seq"})
@@ -330,6 +330,25 @@ async def test_a_failed_persistence_leaves_the_game_finished_and_silent(
     assert room["persisted"] is False
     # the id came with game_finished, so the results link exists before it is stored
     assert room["game_id"] == got[-1][2]["game_id"]
+
+
+# ------------------------------------------------------------- engine reuse
+@aio
+async def test_every_submit_builds_the_engine_from_the_room_once(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fails against payload builders that each rebuild the engine from the room:
+    a day-closing submit with three players and a host built it seven times."""
+    game = await world.running_game(LONG, players=3)
+    built = count_engine_builds(monkeypatch)
+    await submit(game, "P1", 1)
+    assert len(built) == 1
+    await submit(game, "P2", 1)
+    assert len(built) == 2
+    start = world.mark()
+    await submit(game, "P3", 1)  # closes the day
+    assert "day_closed" in [r[1] for r in world.sm.records[start:]]
+    assert len(built) == 3
 
 
 # ------------------------------------------------------------ finish() (3.4)
