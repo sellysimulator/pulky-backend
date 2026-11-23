@@ -162,7 +162,7 @@ async def test_after_the_end_host_and_player_get_full_states(
 ) -> None:
     game = await world.running_game()
     await play_day(game, 1)
-    await world.finish_early(game.code)
+    await world.finish_early(game.code, game_id="pub-1")  # stored: no retry follows
     room = await world.room(game.code)
 
     got = await ask(world, "host-1", game.code)

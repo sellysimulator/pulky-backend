@@ -107,4 +107,6 @@ are wrapped in `@guarded`, so an exception never reaches the client as text.
 When the last player submits, the day resolves and the next one opens. When the game ends
 (the last day, or the host's early end) the room gets `game_finished` with the leaderboard,
 the end-of-game stats and the full config; the game is then written to PostgreSQL in a worker
-thread, outside the lock, and `game_persisted` follows once it is stored.
+thread, outside the lock, and `game_persisted` follows once it is stored. A failed write is
+retried in the background after 2 s, 10 s and 30 s, and again whenever the host or a player
+rejoins or resyncs the finished room while it is not stored (spec 13.5).

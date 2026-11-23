@@ -4,7 +4,7 @@ import uuid
 
 from app.core.config_models import MSG_CONFIG_LOCKED, ConfigError
 from app.core.enums import RoomState
-from app.services import game_service, room_service, state_service
+from app.services import game_service, play_service, room_service, state_service
 from app.services.room_service import Emit
 from app.sockets import manager as sockets_manager
 from app.sockets.errors import guarded
@@ -88,6 +88,8 @@ async def join_waiting(sid: str, data: dict | None = None) -> None:
     if claimed:
         await sockets.enter_room(sid, code)
     await room_service.send(emits)
+    if claimed and play_service.needs_persist(room):
+        await play_service.finish(code)  # its write failed earlier (spec 13.5)
 
 
 def _drop_other_sids(room: dict, alias: str, keep_sid: str) -> None:
@@ -204,6 +206,8 @@ async def join(sid: str, data: dict | None = None) -> None:
     if seated is not None:
         await sockets.join_room(sid, code, seated)
     await room_service.send(emits)
+    if seated is not None and play_service.needs_persist(room):
+        await play_service.finish(code)  # its write failed earlier (spec 13.5)
 
 
 @sio.event

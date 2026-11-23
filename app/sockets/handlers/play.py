@@ -126,3 +126,5 @@ async def request_state(sid: str, data: dict | None = None) -> None:
             if not (emits and emits[0].event == "error"):
                 await state.save_room(code, room)
     await room_service.send(emits)
+    if emits and emits[0].event != "error" and play_service.needs_persist(room):
+        await play_service.finish(code)  # its write failed earlier (spec 13.5)
