@@ -124,7 +124,7 @@ def test_render_yaml_meets_the_deploy_contract() -> None:
 def test_the_secret_patterns_catch_a_database_url_with_credentials() -> None:
     leaks = [
         "postgresql+psycopg://pulky:s3cret@db.example:5432/pulky",
-        "postgres://avnadmin:s3cret@pg-pulky.aivencloud.com:12345/defaultdb",
+        "postgresql://neondb_owner:s3cret@ep-cool-name-123456.us-east-1.aws.neon.tech/pulkydb",
         "postgresql://u:p@h/db",
     ]
     for leak in leaks:

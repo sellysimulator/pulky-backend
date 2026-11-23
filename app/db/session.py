@@ -13,7 +13,10 @@ _engine: Engine | None = None
 def get_engine() -> Engine:
     """The process engine, created on first use so importing never connects.
 
-    Every connection's session time zone is UTC (``db_connect_args``)."""
+    Every connection's session time zone is UTC (``db_connect_args``). Neon
+    scales the compute to zero after 5 idle minutes and drops its connections;
+    ``pool_pre_ping`` replaces them, so the first request after idle only waits
+    for the cold start."""
     global _engine
     if _engine is None:
         current = get_settings()

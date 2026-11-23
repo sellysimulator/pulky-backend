@@ -34,11 +34,11 @@ class Settings(BaseSettings):
     DB_DATABASE: str = "pulkydb"
     DB_REQUIRE_SSL: bool = True
     DB_SSL_CA: str = ""
-    # Per instance at most 2 + 1 = 3 connections: one 20-connection PostgreSQL
-    # service is shared by four games (budget in DEPLOY.md). Raise both on a
-    # bigger plan.
-    DB_POOL_SIZE: int = 2
-    DB_MAX_OVERFLOW: int = 1
+    # Per instance at most 7 + 2 = 9 connections: a deploy runs the old and new
+    # instance side by side, plus alembic and one psql, within Pulky's budget of
+    # 20 connections on its Neon project (DEPLOY.md).
+    DB_POOL_SIZE: int = 7
+    DB_MAX_OVERFLOW: int = 2
     REDIS_ENABLED: bool = False
     REDIS_URL: str = ""
     FIREBASE_SERVICE_ACCOUNT_JSON: str = ""
@@ -81,8 +81,10 @@ class Settings(BaseSettings):
     @property
     def db_connect_args(self) -> dict[str, Any]:
         """psycopg connection options: the session time zone is UTC, and TLS is
-        verified against this project's CA when one is given (``verify-full``),
-        else only required (``require``: encrypted, not verified)."""
+        verified against the CA bundle in ``DB_SSL_CA`` when one is given
+        (``verify-full``), else only required (``require``: encrypted, not
+        verified). The ``options`` startup parameter needs Neon's direct
+        endpoint: the pooled one (``-pooler``) rejects it."""
         args: dict[str, Any] = {"options": "-c timezone=UTC"}
         if self.DB_SSL_CA:
             args |= {"sslmode": "verify-full", "sslrootcert": _ca_file(self.DB_SSL_CA)}
@@ -93,8 +95,8 @@ class Settings(BaseSettings):
 
 @lru_cache
 def _ca_file(ca: str) -> str:
-    """A path to the CA certificate: ``ca`` itself, or the PEM text written once to
-    a temporary file (psycopg takes a file path, never the certificate text)."""
+    """A path to the CA bundle: ``ca`` itself, or the PEM text written once to a
+    temporary file (psycopg takes a file path, never the certificate text)."""
     pem = ca.replace("\\n", "\n")
     if "-----BEGIN" in pem:
         handle, path = tempfile.mkstemp(suffix=".pem")

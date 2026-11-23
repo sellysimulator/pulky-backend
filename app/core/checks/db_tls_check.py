@@ -22,5 +22,5 @@ def check_db_tls() -> None:
         logger.warning(
             "DB_SSL_CA is empty: PostgreSQL connections require TLS but do not "
             "verify the server certificate (sslmode=require). Set DB_SSL_CA to the "
-            "PostgreSQL service's CA certificate in production."
+            "CA bundle (ISRG Root X1 + ISRG Root X2) in production."
         )

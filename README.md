@@ -16,21 +16,22 @@ the Render deploy.
 ```bash
 python3.11 -m venv venv
 venv/bin/pip install -r requirements.txt -r requirements-dev.txt
-cp .env.example .env     # DB_* for a PostgreSQL 17; FIREBASE_SERVICE_ACCOUNT_JSON for Google sign-in
+cp .env.example .env     # DB_* for a local PostgreSQL 18; FIREBASE_SERVICE_ACCOUNT_JSON for Google sign-in
 venv/bin/alembic upgrade head
 venv/bin/uvicorn app.main:application --reload --port 8080
 ```
 
 Every setting has a default, and an empty value in the dotenv file means that default
-(spec §13.2, the template lists them all). For a local PostgreSQL without TLS set
-`DB_REQUIRE_SSL=false`. Without `FIREBASE_SERVICE_ACCOUNT_JSON` the app starts, logs a
+(spec §13.2, the template lists them all). Develop against a local Docker PostgreSQL 18
+without TLS (`DB_REQUIRE_SSL=false`), never against Neon: a local backend there breaks the
+connection budget in `DEPLOY.md`. Without `FIREBASE_SERVICE_ACCOUNT_JSON` the app starts, logs a
 CRITICAL message, and accepts only guests. `REDIS_ENABLED=false` (the default) keeps the
 live rooms in this one process: run a single worker, and a restart ends every running game.
 
 ## Tests and gates
 
 The suite never reads a developer's dotenv file. The tests marked `dbschema` run against a
-throwaway `postgres:17` through Testcontainers with `alembic upgrade head` applied, so they
+throwaway `postgres:18` through Testcontainers with `alembic upgrade head` applied, so they
 need a running Docker daemon. CI (`.github/workflows/ci.yml`) runs exactly these, then builds
 the image; Render deploys only after it passes.
 
