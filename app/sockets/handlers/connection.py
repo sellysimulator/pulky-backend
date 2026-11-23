@@ -29,25 +29,30 @@ async def connect(sid: str, environ: dict, auth: dict | None = None) -> bool | N
     so does one more socket than the abuse limits allow (spec 0.6)."""
     if not abuse.open_socket(sid, environ):  # no slot taken, so none to give back
         raise socketio.exceptions.ConnectionRefusedError(TOO_MANY_CONNECTIONS_MESSAGE)
-    claims = auth if isinstance(auth, dict) else {}
-    id_token = claims.get("idToken")
-    guest_id = claims.get("guestId")
-    sockets = sockets_manager.get_socket_manager()
-    if id_token:
-        decoded = await deps.verify_id_token(id_token)
-        if not decoded:
+    accepted = False
+    try:
+        claims = auth if isinstance(auth, dict) else {}
+        id_token = claims.get("idToken")
+        guest_id = claims.get("guestId")
+        sockets = sockets_manager.get_socket_manager()
+        if id_token:
+            decoded = await deps.verify_id_token(id_token)
+            if not decoded:
+                return False  # reject; never downgrade to guest
+            identity = str(decoded["uid"])
+            # The one place a verified uid is marked: what start_game records as the
+            # host (spec 11.3), never a guest id however it looks.
+            sockets.sid_to_verified_uid[sid] = identity
+        elif isinstance(guest_id, str) and GUEST_RE.match(guest_id):
+            identity = guest_id
+        else:
+            identity = f"guest_{uuid.uuid4()}"
+        sockets.sid_to_identity[sid] = identity
+        accepted = True
+        return None
+    finally:
+        if not accepted:  # refused or failed: give the slot back (game_stack 0.8)
             abuse.close_socket(sid)
-            return False  # reject; never downgrade to guest
-        identity = str(decoded["uid"])
-        # The one place a verified uid is marked: what start_game records as the
-        # host (spec 11.3), never a guest id however it looks.
-        sockets.sid_to_verified_uid[sid] = identity
-    elif isinstance(guest_id, str) and GUEST_RE.match(guest_id):
-        identity = guest_id
-    else:
-        identity = f"guest_{uuid.uuid4()}"
-    sockets.sid_to_identity[sid] = identity
-    return None
 
 
 @sio.event

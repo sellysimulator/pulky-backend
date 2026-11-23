@@ -53,6 +53,25 @@ async def test_a_rejected_token_frees_its_place(
 
 
 @aio
+async def test_a_handshake_that_fails_midway_frees_its_place(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fails against a handshake that keeps the slot when it raises after taking it."""
+    from app.api import deps
+
+    monkeypatch.setattr(abuse, "SOCKETS_PER_IP", 1)
+
+    async def broken(token: object) -> None:
+        raise RuntimeError("verification crashed")
+
+    monkeypatch.setattr(deps, "verify_id_token", broken)
+    with pytest.raises(RuntimeError):
+        await connect("s1", environ("1.1.1.1"), {"idToken": "any"})
+    assert "s1" not in world.sm.sid_to_identity
+    assert await connect("s2", environ("1.1.1.1"), {"guestId": guest(2)}) is None
+
+
+@aio
 async def test_joins_naming_unknown_rooms_run_out_per_ip(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
