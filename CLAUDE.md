@@ -176,7 +176,9 @@ message at startup and every signed-in user is rejected.
     market uses) and field messages (`records.decision_field_issues`, the checks
     `parse_decision` makes). Read-only: no lock, no save, no emit. It takes the engine
     from `game_service.preview_engine` (64 engines cached per process, keyed by room code
-    and checked against `seq` and the host secret), never `load_engine`.
+    and checked against `seq` and the host secret), never `load_engine`. An entry is
+    dropped when its game finishes or ends early (`_mark_finished`), when a preview finds
+    its room gone, and when it went unused for a whole room TTL (24 h).
   - `POST /config/preview` (`app/core/previews.py` `config_preview`): every number of the
     host screen's previews, calculator and help examples. It replaces each blank hidden
     default with 0 before computing and nulls every figure that needs it; never fill a

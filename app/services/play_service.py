@@ -31,6 +31,7 @@ def _mark_finished(room: dict) -> None:
     room["state"] = RoomState.FINISHED.value
     room["finished_at"] = _now()
     room["game_id"] = room.get("game_id") or uuid.uuid4().hex
+    game_service.forget_preview_engine(room["room_code"])
 
 
 def _game_finished(room: dict, results: dict, seq: int) -> dict:

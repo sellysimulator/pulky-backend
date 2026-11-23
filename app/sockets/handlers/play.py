@@ -72,13 +72,11 @@ async def preview_decision(sid: str, data: dict | None = None) -> dict:
     state = state_service.get_state_service()
     room = await state.get_room(code)
     alias = room["sid_to_alias"].get(sid) if room is not None else None
+    if room is None:
+        game_service.forget_preview_engine(code)  # expired or deleted
     if room is None or alias is None:
         return {"code": "NOT_IN_ROOM", "message": play_service.MSG_NOT_IN_ROOM}
-    engine = (
-        game_service.preview_engine(room)
-        if room["state"] == RoomState.RUNNING
-        else None
-    )
+    engine = game_service.preview_engine(room)  # None unless the room is running
     if engine is None:
         return {
             "code": "GAME_NOT_RUNNING",
