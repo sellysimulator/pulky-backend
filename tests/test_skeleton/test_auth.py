@@ -95,6 +95,54 @@ def test_configured_verification_returns_claims_and_rejects_failures(
     assert deps.verify_firebase_id_token("bad") is None
 
 
+def test_an_invalid_or_expired_token_is_rejected_without_a_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_service_account: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from firebase_admin import auth
+
+    errors = {
+        "invalid": auth.InvalidIdTokenError("bad signature"),
+        "expired": auth.ExpiredIdTokenError("expired", cause=None),
+        "revoked": auth.RevokedIdTokenError("revoked"),
+    }
+
+    def fake_verify(token: str, *args: Any, **kwargs: Any) -> dict:
+        raise errors[token]
+
+    monkeypatch.setattr(auth, "verify_id_token", fake_verify)
+    with caplog.at_level("WARNING", logger="app.api.deps"):
+        for token in errors:
+            assert deps.verify_firebase_id_token(token) is None
+    assert [r for r in caplog.records if r.name == "app.api.deps"] == []
+
+
+def test_a_verification_failure_that_is_not_the_tokens_is_logged(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_service_account: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Fails against a helper that swallows every exception silently."""
+    from firebase_admin import auth
+
+    token = "secret-token-value-123"
+
+    def fake_verify(given: str, *args: Any, **kwargs: Any) -> dict:
+        raise auth.CertificateFetchError(f"could not fetch keys for {given}", None)
+
+    monkeypatch.setattr(auth, "verify_id_token", fake_verify)
+    with caplog.at_level("WARNING", logger="app.api.deps"):
+        assert deps.verify_firebase_id_token(token) is None
+    warnings = [
+        r
+        for r in caplog.records
+        if r.name == "app.api.deps" and r.levelname == "WARNING"
+    ]
+    assert len(warnings) == 1
+    assert token not in warnings[0].getMessage()
+
+
 def test_firebase_tokens_fixture_verifies_exactly_its_keys(
     firebase_tokens: FirebaseTokens,
 ) -> None:

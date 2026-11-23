@@ -18,13 +18,19 @@ MAX_ID_TOKEN_LENGTH = 4096
 
 
 def verify_firebase_id_token(token: str) -> dict[str, Any] | None:
-    """Claims of a valid token, else ``None``. ``None`` always means reject.
+    """Claims of a valid token, else ``None``. ``None`` always means reject; a
+    failure that is not the token's (a certificate fetch, say) is also logged.
     Blocking (signature check, key fetch): async code awaits ``verify_id_token``."""
     if not token or firebase.init_firebase() is None:
         return None
     try:
         claims = auth.verify_id_token(token)
-    except Exception:
+    except (auth.InvalidIdTokenError, ValueError):
+        return None  # a bad, expired or revoked token: an ordinary rejection
+    except Exception as error:
+        # Not the token's fault (the key fetch failed, say): still a rejection, but
+        # one an operator must see. The type only; never the token or its claims.
+        logger.warning("ID token verification failed: %s", type(error).__name__)
         return None
     uid = claims.get("uid") if claims else None
     if not isinstance(uid, str) or not uid:
