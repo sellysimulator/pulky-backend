@@ -64,7 +64,8 @@ in Pulky's own Neon project (user `neondb_owner`). `DB_HOST` is Neon's direct en
 the `-pooler` one: the pooler rejects the `options=-c timezone=UTC` startup parameter.
 `DB_SSL_CA` (the ISRG Root X1 + X2 PEM bundle, the same for all four games, PEM text or path)
 means `sslmode=verify-full`; without it `DB_REQUIRE_SSL=true` means `sslmode=require`
-(encrypted, not verified). Every session runs in UTC (`db_connect_args`).
+(encrypted, not verified). Every session runs in UTC (`db_connect_args`), and a connection
+attempt gives up after 10 s (`connect_timeout`; never a startup `statement_timeout`).
 `DB_POOL_SIZE` + `DB_MAX_OVERFLOW` default to 7 + 2 = 9 per instance, so a deploy fits
 Pulky's budget of 20 connections (`DEPLOY.md`). Develop against a local Docker PostgreSQL 18,
 not Neon: a local backend against Neon is one more instance and breaks that budget.

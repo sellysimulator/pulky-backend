@@ -80,12 +80,15 @@ class Settings(BaseSettings):
 
     @property
     def db_connect_args(self) -> dict[str, Any]:
-        """psycopg connection options: the session time zone is UTC, and TLS is
+        """psycopg connection options: a connection attempt gives up after 10 s
+        (``connect_timeout``, so an unreachable database fails a request instead of
+        hanging it; no ``statement_timeout``, which a pooler may refuse as a startup
+        option), the session time zone is UTC, and TLS is
         verified against the CA bundle in ``DB_SSL_CA`` when one is given
         (``verify-full``), else only required (``require``: encrypted, not
         verified). The ``options`` startup parameter needs Neon's direct
         endpoint: the pooled one (``-pooler``) rejects it."""
-        args: dict[str, Any] = {"options": "-c timezone=UTC"}
+        args: dict[str, Any] = {"connect_timeout": 10, "options": "-c timezone=UTC"}
         if self.DB_SSL_CA:
             args |= {"sslmode": "verify-full", "sslrootcert": _ca_file(self.DB_SSL_CA)}
         elif self.DB_REQUIRE_SSL:

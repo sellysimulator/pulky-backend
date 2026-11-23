@@ -85,14 +85,19 @@ PEM = "-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----\n"
 
 def test_db_connect_args_set_utc_and_follow_tls_settings(tmp_path: Path) -> None:
     off = Settings(DB_REQUIRE_SSL=False, DB_SSL_CA="").db_connect_args
-    assert off == {"options": "-c timezone=UTC"}
+    assert off == {"connect_timeout": 10, "options": "-c timezone=UTC"}
     required = Settings(DB_REQUIRE_SSL=True, DB_SSL_CA="").db_connect_args
-    assert required == {"options": "-c timezone=UTC", "sslmode": "require"}
+    assert required == {
+        "connect_timeout": 10,
+        "options": "-c timezone=UTC",
+        "sslmode": "require",
+    }
 
     ca = tmp_path / "ca.pem"
     ca.write_text(PEM)
     by_path = Settings(DB_SSL_CA=str(ca)).db_connect_args
     assert by_path == {
+        "connect_timeout": 10,
         "options": "-c timezone=UTC",
         "sslmode": "verify-full",
         "sslrootcert": str(ca),
