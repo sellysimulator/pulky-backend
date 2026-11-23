@@ -25,8 +25,9 @@ TOO_MANY_CONNECTIONS_MESSAGE = (
 
 @sio.event
 async def connect(sid: str, environ: dict, auth: dict | None = None) -> bool | None:
-    """Set the identity once; a token that fails verification rejects the socket, and
-    so does one more socket than the abuse limits allow (spec 0.6)."""
+    """Set the identity once; a token that fails verification rejects the socket, so
+    does a handshake with neither a token nor a guest id, and so does one more socket
+    than the abuse limits allow (spec 0.6)."""
     if not abuse.open_socket(sid, environ):  # no slot taken, so none to give back
         raise socketio.exceptions.ConnectionRefusedError(TOO_MANY_CONNECTIONS_MESSAGE)
     accepted = False
@@ -45,8 +46,12 @@ async def connect(sid: str, environ: dict, auth: dict | None = None) -> bool | N
             sockets.sid_to_verified_uid[sid] = identity
         elif isinstance(guest_id, str) and GUEST_RE.match(guest_id):
             identity = guest_id
+        elif guest_id:
+            identity = f"guest_{uuid.uuid4()}"  # a malformed guest id: a fresh guest
         else:
-            identity = f"guest_{uuid.uuid4()}"
+            # No identity at all: a signed-in client whose token could not be read
+            # sends this rather than fall back to a guest; it retries (spec 11.3).
+            return False
         sockets.sid_to_identity[sid] = identity
         accepted = True
         return None

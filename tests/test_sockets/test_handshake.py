@@ -71,7 +71,7 @@ async def test_a_guest_can_never_obtain_a_firebase_uid(world: World) -> None:
 
 @aio
 async def test_malformed_guest_ids_get_a_fresh_guest_identity(world: World) -> None:
-    for n, bad in enumerate(["", "guest_", "guest_" + "G" * 36, "someone-else"]):
+    for n, bad in enumerate(["guest_", "guest_" + "G" * 36, "someone-else"]):
         sid = f"bad{n}"
         assert await connect(sid, {}, {"guestId": bad}) is not False
         identity = world.sm.sid_to_identity[sid]
@@ -80,15 +80,22 @@ async def test_malformed_guest_ids_get_a_fresh_guest_identity(world: World) -> N
 
 
 @aio
-@pytest.mark.parametrize("auth", [None, {}, {"idToken": "", "guestId": ""}])
-async def test_no_credentials_means_a_new_guest_each_time(
+@pytest.mark.parametrize(
+    "auth",
+    [
+        None,
+        {},
+        {"idToken": "", "guestId": ""},
+        {"idToken": None, "guestId": None},  # a signed-in client whose token failed
+    ],
+)
+async def test_a_handshake_with_no_identity_is_refused(
     world: World, auth: dict | None
 ) -> None:
-    assert await connect("a", {}, auth) is not False
-    assert await connect("b", {}, auth) is not False
-    ida, idb = world.sm.sid_to_identity["a"], world.sm.sid_to_identity["b"]
-    assert GUEST_RE.match(ida) and GUEST_RE.match(idb)
-    assert ida != idb
+    """Fails against a server that turns a missing identity into a fresh guest, so a
+    signed-in player whose token could not be read would play on as a stranger."""
+    assert await connect("a", {}, auth) is False
+    assert "a" not in world.sm.sid_to_identity
 
 
 @aio
