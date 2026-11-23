@@ -105,6 +105,20 @@ def test_batch_create_is_only_on_the_rest_limit() -> None:
 # --- client_ip -------------------------------------------------------------------
 
 
+def test_per_ip_limits_are_sized_for_a_whole_school_behind_one_ip() -> None:
+    """The Novus standard: a school behind one NAT (previews, reconnects and joins
+    included) stays under every per-IP cap; the per-socket cap stays the guard."""
+    assert abuse.SOCKETS_PER_IP >= 400
+    assert abuse.ip_event_limiter.limit >= 15000
+    assert abuse.rest_limiter.limit >= 3000
+    assert abuse.lookup_limiter.limit >= 600
+    for route in ("POST /api/v1/config/validate", "POST /api/v1/config/preview"):
+        assert abuse.route_limiters[route].limit >= 600
+        assert abuse.route_limiters[route].window == abuse.WINDOW_SECONDS
+    assert abuse.sid_event_limiter.limit == 300
+    assert abuse.ROUTE_LIMITS[abuse.CREATE_ROUTE] == 30  # per hour, unchanged
+
+
 def test_client_ip_is_the_rightmost_forwarded_entry() -> None:
     forged = [(b"x-forwarded-for", b"6.6.6.6, 1.2.3.4")]
     assert client_ip(scope(headers=forged)) == "1.2.3.4"

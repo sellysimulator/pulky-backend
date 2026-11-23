@@ -12,10 +12,14 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Rates are per fixed window of WINDOW_SECONDS. A classroom often shares one IP.
+# Rates are per fixed window of WINDOW_SECONDS. A whole school often shares one IP (one
+# NAT), so the per-IP caps are sized for it (the Novus standard); the per-socket caps
+# are the real guard against one client.
 WINDOW_SECONDS = 60.0
-REST_PER_IP = 600  # every REST request, per IP
-ROOM_LOOKUPS_PER_IP = 120  # requests that name a room code the caller is not in
+REST_PER_IP = 3000  # every REST request, per IP
+# Requests that name a room code the caller is not in. A reconnecting class re-sends
+# its joins at once, and each counts until the join seats the socket again.
+ROOM_LOOKUPS_PER_IP = 600
 CREATE_ROUTE = "POST /api/v1/rooms/create"
 EXPORT_ROUTE = "GET /api/v1/games/id/{public_id}/export"
 # Costly public routes, per IP, on top of REST_PER_IP. POST /api/v1/rooms/batch-create
@@ -25,8 +29,9 @@ ROUTE_LIMITS: dict[str, int] = {
     # Rooms made, per IP per hour: the standard of every Novus game. A batch of up to
     # MAX_BATCH_ROOMS (10) charges one per room (`allow_room_creates`).
     CREATE_ROUTE: 30,
-    "POST /api/v1/config/validate": 300,
-    "POST /api/v1/config/preview": 300,
+    # Asked after every pause in a host's typing; a school of hosts shares the IP.
+    "POST /api/v1/config/validate": 600,
+    "POST /api/v1/config/preview": 600,
     # Anyone who can open a game's results may download its data (spec 13.4): this,
     # not the results page's once-per-session buttons, is what guards the compute.
     # Both formats share it. A classroom shares one IP, so not lower than 100 an hour.
@@ -45,8 +50,8 @@ ROOM_LOOKUP_ROUTES: frozenset[str] = frozenset(
 UNLIMITED_PATHS: frozenset[str] = frozenset({"/api/v1/health"})  # Render's probe
 MAX_BODY_BYTES = 65_536  # a REST body or a Socket.IO message; a full config is ~1 KB
 EVENTS_PER_SID = 300  # Socket.IO events per socket
-EVENTS_PER_IP = 3000  # Socket.IO events per IP, all its sockets together
-SOCKETS_PER_IP = 100  # open sockets per IP
+EVENTS_PER_IP = 15000  # Socket.IO events per IP, all its sockets together
+SOCKETS_PER_IP = 400  # open sockets per IP
 MAX_SOCKETS = 5000  # open sockets in the process
 MAX_LIVE_ROOMS = 500  # live rooms in process memory
 LOBBY_ROOM_TTL_SECONDS = 7200  # a room that has not started, since its last save
