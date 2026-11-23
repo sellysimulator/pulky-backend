@@ -90,6 +90,7 @@ venv/bin/python -m app.tools.balance --seeds 1000 --players 4 [--strategy NAME .
 | `GET /games/id/{public_id}/results`, `GET /games/id/{public_id}/export` | A stored game's results, and its CSV or JSON export; both open to anyone with the id. |
 | `POST /games/claim` | Move a guest's stored results to the signed-in user. |
 | `POST /users/upsert`, `GET /users/me`, `/users/me/stats`, `/users/me/games`, `/users/me/games/{public_id}` | The signed-in user's profile, stats and played games. |
+| `GET /users/me/hosted-games` | The games the signed-in user hosted signed in, newest first (`games.host_user_id`; spec 13.4, 13.5). |
 
 Shapes and error details: spec §13.4.
 

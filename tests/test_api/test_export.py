@@ -395,6 +395,8 @@ FORBIDDEN_KEYS = (
     "identity",
     "guest_identity",
     "host_identity",
+    "host_uid",
+    "host_user_id",
     "session_token",
     "host_secret",
 )
@@ -406,7 +408,6 @@ def memory_game(engine: PulkyEngine, room: dict[str, Any]) -> StoredGame:
     return StoredGame(
         game_id=room["game_id"],
         room_code=room["room_code"],
-        host_display_name=room["host_display_name"],
         duration_days=engine.config.duration_days,
         days_played=len(engine.market_history()),
         ended_early=False,

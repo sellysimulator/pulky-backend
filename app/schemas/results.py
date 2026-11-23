@@ -8,7 +8,6 @@ from pydantic import BaseModel
 class ResultsResponse(BaseModel):
     game_id: str
     room_code: str
-    host_display_name: str
     duration_days: int
     days_played: int
     ended_early: bool

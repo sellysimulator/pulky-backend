@@ -1,4 +1,5 @@
-"""The signed-in user's profile, stats and games (spec 13.4, 13.5)."""
+"""The signed-in user's profile, stats, played games and hosted games (spec 13.4,
+13.5)."""
 
 from typing import Any
 
@@ -39,6 +40,15 @@ _GAMES = (
     .join(Game, Game.id == Participant.game_id)
     .order_by(Game.finished_at.desc(), Game.id.desc())
 )
+# The games the user hosted signed in, read from ``games.host_user_id`` alone: this
+# list is the host record's only use (spec 13.5).
+_HOSTED = select(
+    Game.public_id.label("game_id"),
+    Game.room_code,
+    Game.finished_at,
+    Game.player_count,
+    Game.ended_early,
+).order_by(Game.finished_at.desc(), Game.id.desc())
 _MY_ALIAS = select(Participant.alias).join(Game, Game.id == Participant.game_id)
 
 
@@ -148,6 +158,22 @@ def list_user_games(db: Session, user: User | None) -> list[dict]:
             "display_name": row["display_name"],
             "rank": int(row["player_rank"]),
             "total_profit": float(row["total_profit"]),
+        }
+        for row in rows
+    ]
+
+
+def list_hosted_games(db: Session, user: User | None) -> list[dict]:
+    if user is None:
+        return []
+    rows = db.execute(_HOSTED.where(Game.host_user_id == user.id)).mappings().all()
+    return [
+        {
+            "game_id": row["game_id"],
+            "room_code": row["room_code"],
+            "finished_at": iso_utc(row["finished_at"]),
+            "player_count": int(row["player_count"]),
+            "ended_early": bool(row["ended_early"]),
         }
         for row in rows
     ]

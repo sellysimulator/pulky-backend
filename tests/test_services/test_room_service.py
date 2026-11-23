@@ -191,6 +191,16 @@ def test_sanitise_display_name_collapses_whitespace() -> None:
     assert sanitise_display_name("La     Chula   Rosa", FALLBACK) == "La Chula Rosa"
 
 
+def test_sanitise_display_name_whitespace_controls_separate_words() -> None:
+    assert sanitise_display_name("La\tChula\nRosa", FALLBACK) == "La Chula Rosa"
+    assert sanitise_display_name("a\r\nb\x0bc\x0cd", FALLBACK) == "a b c d"
+
+
+def test_sanitise_display_name_retrims_after_the_clamp() -> None:
+    # 23 letters, then a space at index 23: the clamp would otherwise keep it.
+    assert sanitise_display_name("x" * 23 + " yz", FALLBACK) == "x" * 23
+
+
 def test_sanitise_display_name_keeps_accents_and_exact_length() -> None:
     assert sanitise_display_name("Pulquería Ñandú", FALLBACK) == "Pulquería Ñandú"
     assert sanitise_display_name("ñ" * 24, FALLBACK) == "ñ" * 24
@@ -285,10 +295,18 @@ def test_lobby_payload_orders_by_alias_number() -> None:
 def test_lobby_payload_carries_no_credential() -> None:
     room = make_room(3)
     room["host_identity"] = "host-identity-secret"
+    room["host_uid"] = "host-uid-secret"
     room["host_sid"] = HOST_SID
     payload = lobby_payload(room, 4)
-    for key in ("identity", "session_token", "host_secret", "host_identity"):
+    for key in (
+        "identity",
+        "session_token",
+        "host_secret",
+        "host_identity",
+        "host_uid",
+    ):
         assert not contains_key(payload, key)
+    assert not contains_value(payload, "host-uid-secret")
     for n in (1, 2, 3):
         assert not contains_value(payload, f"identity-secret-{n}")
         assert not contains_value(payload, f"token-secret-{n}")

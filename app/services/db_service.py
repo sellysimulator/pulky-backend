@@ -19,6 +19,7 @@ from app.core.money import round_cents
 from app.core.records import DayRecord, FinalSettlement, MarketDay
 from app.db import session as db_session_module
 from app.models.game import Game, GameConfigRow, MarketDayRow, Participant, PlayerDay
+from app.models.user import User
 from app.services import stats_service
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,6 @@ _GAME_FIELDS = (
     "public_id",
     "room_code",
     "host_user_id",
-    "host_display_name",
     "rng_seed",
     "duration_days",
     "days_played",
@@ -142,6 +142,16 @@ def _resolve_identity(
     return user.id, None
 
 
+def _host_user_id(db: Session, room: Mapping[str, Any]) -> int | None:
+    """The host's ``users.id`` for the profile's hosted list, and nothing else (spec
+    13.5): set only from the verified uid ``start_game`` kept, and only when that
+    user's row already exists. A lookup: the host never gets a row from this."""
+    uid = room.get("host_uid")
+    if not isinstance(uid, str) or not uid:
+        return None
+    return db.scalar(select(User.id).where(User.firebase_uid == uid))
+
+
 def _write_game(
     db: Session, room: dict, engine: PulkyEngine, public_id: str
 ) -> list[int]:
@@ -152,18 +162,13 @@ def _write_game(
     aliases = list(engine.aliases)
     room_players: Mapping[str, Mapping[Any, Any]] = room["participants"]
 
-    host_identity = room.get("host_identity")
-    host_user_id: int | None = None
-    if host_identity and not _is_guest(host_identity):
-        host_user_id, _ = _resolve_identity(
-            db, host_identity, room["host_display_name"]
-        )
-
     resolved: dict[str, tuple[int | None, str | None]] = {}
     for alias in aliases:
         resolved[alias] = _resolve_identity(
             db, room_players[alias]["identity"], engine.display_names[alias]
         )
+    # After the players: a host who also played signed in has a row by now.
+    host_user_id = _host_user_id(db, room)
 
     game_id = db.execute(
         insert(_GAMES).returning(_GAMES.c.id),
@@ -171,7 +176,6 @@ def _write_game(
             "public_id": public_id,
             "room_code": code,
             "host_user_id": host_user_id,
-            "host_display_name": room["host_display_name"],
             "rng_seed": room["seed"],
             "duration_days": engine.config.duration_days,
             "days_played": len(market),
@@ -293,7 +297,6 @@ def persist_finished_game(
 class StoredGame:
     game_id: str
     room_code: str
-    host_display_name: str
     duration_days: int
     days_played: int
     ended_early: bool
@@ -388,7 +391,6 @@ def load_stored_game(db: Session, game_pk: int) -> StoredGame:
     return StoredGame(
         game_id=game.public_id,
         room_code=game.room_code,
-        host_display_name=game.host_display_name,
         duration_days=game.duration_days,
         days_played=game.days_played,
         ended_early=game.ended_early,

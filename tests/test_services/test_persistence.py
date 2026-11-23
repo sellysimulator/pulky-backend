@@ -157,13 +157,15 @@ def make_room(
     code: str = "ABC234",
     identities: dict[str, str] | None = None,
     host_identity: str | None = None,
+    host_uid: str | None = None,
     started_at: str = STARTED,
     finished_at: str = FINISHED,
     host_name: str = "Ms. Ruiz",
     game_id: str | None = None,
 ) -> dict[str, Any]:
     """A finished room document with the game id it got when it finished.
-    Default: every player and the host are guests."""
+    Default: every player and the host are guests. ``host_uid`` is the verified uid
+    ``start_game`` keeps for a signed-in host."""
     room = new_room_document(
         room_code=code,
         config=engine.config.to_dict(),
@@ -177,6 +179,7 @@ def make_room(
     room["finished_at"] = finished_at
     room["game_id"] = game_id or uuid.uuid4().hex
     room["host_identity"] = host_identity or guest_id(9999)
+    room["host_uid"] = host_uid
     room["seed"] = engine.seed
     room["participants"] = {
         alias: {
@@ -194,6 +197,8 @@ def make_room(
 
 def secrets_of(room: dict[str, Any]) -> list[str]:
     out = [HOST_SECRET, str(room["host_identity"])]
+    if room.get("host_uid"):
+        out.append(room["host_uid"])
     for p in room["participants"].values():
         out += [p["identity"], p["session_token"]]
     return out
@@ -333,7 +338,6 @@ def test_a_finished_room_is_written_as_specified(
     (g,) = rows(db_session, "SELECT * FROM games")
     assert g["public_id"] == gid == room["game_id"]
     assert g["room_code"] == "ABC234"
-    assert g["host_display_name"] == "Ms. Ruiz"
     assert g["rng_seed"] == peer_engine.seed
     assert g["duration_days"] == 7 and g["days_played"] == 7
     assert not g["ended_early"] and g["player_count"] == 2
@@ -430,29 +434,95 @@ def test_signed_in_players_get_user_id_and_guests_get_guest_identity(
     room = make_room(
         peer_engine,
         identities={"P1": "firebase-uid-alice", "P2": guest_id(2)},
-        host_identity="firebase-uid-host",
     )
     persist(room, factory, db_session)
     users = {
         r["firebase_uid"]: r["id"]
         for r in rows(db_session, "SELECT id, firebase_uid FROM users")
     }
-    assert set(users) == {"firebase-uid-alice", "firebase-uid-host"}
+    assert set(users) == {"firebase-uid-alice"}
     parts = {r["alias"]: r for r in rows(db_session, "SELECT * FROM participants")}
     assert parts["P1"]["user_id"] == users["firebase-uid-alice"]
     assert parts["P1"]["guest_identity"] is None
     assert parts["P2"]["user_id"] is None
     assert parts["P2"]["guest_identity"] == guest_id(2)
+
+
+# ------------------------------------------------- the host record (spec 13.5)
+
+
+def host_user_id(db_session: Session) -> Any:
     (g,) = rows(db_session, "SELECT host_user_id FROM games")
-    assert g["host_user_id"] == users["firebase-uid-host"]
+    return g["host_user_id"]
+
+
+def test_a_verified_host_with_a_user_row_is_recorded(
+    peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
+) -> None:
+    host = get_or_create_user(db_session, "firebase-uid-host", "Ms. Ruiz")
+    room = make_room(
+        peer_engine,
+        host_identity="firebase-uid-host",
+        host_uid="firebase-uid-host",
+    )
+    persist(room, factory, db_session)
+    assert host_user_id(db_session) == host.id
+
+
+def test_the_verified_uid_is_recorded_whatever_the_live_host_identity(
+    peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
+) -> None:
+    """A dashboard-started room never ran join_waiting: no host_identity at all."""
+    host = get_or_create_user(db_session, "firebase-uid-host", "Ms. Ruiz")
+    room = make_room(peer_engine, host_uid="firebase-uid-host")
+    room["host_identity"] = None
+    persist(room, factory, db_session)
+    assert host_user_id(db_session) == host.id
+
+
+def test_a_verified_host_who_also_played_signed_in_is_recorded(
+    peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
+) -> None:
+    """The row the host's own seat creates is there when the host is looked up."""
+    room = make_room(
+        peer_engine,
+        identities={"P1": "firebase-uid-host", "P2": guest_id(2)},
+        host_uid="firebase-uid-host",
+    )
+    persist(room, factory, db_session)
+    (user,) = rows(db_session, "SELECT id FROM users")
+    assert host_user_id(db_session) == user["id"]
 
 
 def test_a_guest_host_has_no_host_user_id(
     peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
 ) -> None:
     persist(make_room(peer_engine), factory, db_session)
-    (g,) = rows(db_session, "SELECT host_user_id FROM games")
-    assert g["host_user_id"] is None
+    assert host_user_id(db_session) is None
+
+
+def test_a_host_identity_without_a_verified_uid_is_never_recorded(
+    peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
+) -> None:
+    """No ``guest_`` prefix proves nothing: only the uid start_game verified counts,
+    even when a user row with that uid exists."""
+    get_or_create_user(db_session, "firebase-uid-host", "Ms. Ruiz")
+    room = make_room(peer_engine, host_identity="firebase-uid-host")
+    persist(room, factory, db_session)
+    assert host_user_id(db_session) is None
+
+
+def test_a_verified_host_with_no_user_row_is_null_and_gets_no_row(
+    peer_engine: PulkyEngine, factory: Callable[[], Session], db_session: Session
+) -> None:
+    room = make_room(
+        peer_engine,
+        host_identity="firebase-uid-host",
+        host_uid="firebase-uid-host",
+    )
+    persist(room, factory, db_session)
+    assert host_user_id(db_session) is None
+    assert count(db_session, "users") == 0
 
 
 def test_a_guest_identity_never_creates_a_user(
@@ -639,7 +709,12 @@ def test_insert_count_does_not_grow_with_players_or_days(
         a: (f"firebase-uid-{a}" if i < 4 else guest_id(i + 1))
         for i, a in enumerate(engine.aliases)
     }
-    room = make_room(engine, identities=identities, host_identity="firebase-uid-host")
+    room = make_room(
+        engine,
+        identities=identities,
+        host_identity="firebase-uid-host",
+        host_uid="firebase-uid-host",
+    )
     rec = Recorder(db_engine)
     try:
         gid = persist_finished_game(room, factory)
@@ -650,9 +725,9 @@ def test_insert_count_does_not_grow_with_players_or_days(
     assert count(db_session, "market_days") == 20
     for table in TABLES:
         assert len(rec.inserts_into(table)) == 1, f"{table}: one INSERT per row"
-    assert len(rec.inserts_into("users")) <= 5  # four players and the host
+    assert len(rec.inserts_into("users")) <= 4  # the four players, never the host
     assert len(rec.inserts_into("user_stats")) <= 4
-    assert len(rec.inserts) <= 5 + 5 + 4
+    assert len(rec.inserts) <= 5 + 4 + 4
 
 
 def test_every_persisted_row_carries_its_timestamps(
@@ -696,6 +771,7 @@ def test_no_log_record_contains_an_identity_token_or_host_secret(
         peer_engine,
         identities={"P1": "firebase-uid-alice", "P2": guest_id(2)},
         host_identity="firebase-uid-host",
+        host_uid="firebase-uid-host",
     )
     caplog.set_level(logging.DEBUG)
     gid = persist(room, factory, db_session)
@@ -722,7 +798,7 @@ def test_a_stored_and_reloaded_game_equals_the_engine_field_for_field(
     )
     g = stored(db_session, persist(room, factory, db_session))
     assert isinstance(g, StoredGame)
-    assert g.room_code == "ABC234" and g.host_display_name == "Ms. Ruiz"
+    assert g.room_code == "ABC234"
     assert g.duration_days == 7 and g.days_played == 7 and g.ended_early is False
     assert g.seed == peer_engine.seed
     assert g.started_at == datetime(2026, 10, 12, 14, 0, 0, tzinfo=UTC)
@@ -849,15 +925,18 @@ def test_two_games_under_one_reissued_code_are_kept_apart_by_id(
 ) -> None:
     """A room code is reissued once its live room expires (spec 11.3): the stored
     games, even with the same start time, are told apart only by their ids."""
-    first = persist(make_room(peer_engine, host_name="First"), factory, db_session)
-    second = persist(make_room(peer_engine, host_name="Second"), factory, db_session)
+    first_end, second_end = "2026-10-12T15:00:00Z", "2026-10-12T16:00:00Z"
+    first = persist(make_room(peer_engine, finished_at=first_end), factory, db_session)
+    second = persist(
+        make_room(peer_engine, finished_at=second_end), factory, db_session
+    )
     assert first != second and count(db_session, "games") == 2
     db_session.rollback()
     ids = set()
-    for public_id, host in ((first, "First"), (second, "Second")):
+    for public_id, hour in ((first, 15), (second, 16)):
         game = find_game_by_public_id(db_session, public_id)
         assert game is not None and game.room_code == "ABC234"
-        assert game.host_display_name == host
+        assert game.finished_at == datetime(2026, 10, 12, hour, 0, 0, tzinfo=UTC)
         ids.add(game.id)
         # every child row carries the id RETURNING gave its own game
         where = f"game_id = {game.id}"

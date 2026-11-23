@@ -43,3 +43,15 @@ class GameListItem(BaseModel):
 
 class GameListResponse(BaseModel):
     games: list[GameListItem]
+
+
+class HostedGameItem(BaseModel):
+    game_id: str
+    room_code: str
+    finished_at: str
+    player_count: int
+    ended_early: bool
+
+
+class HostedGameListResponse(BaseModel):
+    games: list[HostedGameItem]

@@ -26,6 +26,8 @@ class SocketManager:
 
     def __init__(self) -> None:
         self.sid_to_identity: dict[str, str] = {}
+        # Only a uid from a verified Firebase token at the handshake, never a guest id.
+        self.sid_to_verified_uid: dict[str, str] = {}
         self.sid_to_alias: dict[str, tuple[str, str]] = {}
         self.sid_to_host_room: dict[str, str] = {}
 
@@ -56,6 +58,7 @@ class SocketManager:
 
     def forget(self, sid: str) -> None:
         self.sid_to_identity.pop(sid, None)
+        self.sid_to_verified_uid.pop(sid, None)
         self.sid_to_alias.pop(sid, None)
         self.sid_to_host_room.pop(sid, None)
 

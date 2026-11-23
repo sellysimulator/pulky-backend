@@ -212,6 +212,7 @@ async def test_identity_and_host_secret_appear_nowhere_they_should_not(
     flow = await lobby_to_finish(world)
     for _target, event, data, _ in world.sm.records:
         assert not contains_key(data, "identity"), f"identity key in {event}"
+        assert not contains_key(data, "host_uid"), f"host_uid key in {event}"
         assert not contains_key(data, "host_secret") or event == "host_claimed"
         for ident in flow.identities.values():
             assert not contains_value(data, ident), f"identity value in {event}"
