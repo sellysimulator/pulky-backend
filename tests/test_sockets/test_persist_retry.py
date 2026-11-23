@@ -151,3 +151,79 @@ async def test_two_finishes_at_once_write_the_game_once(
     await asyncio.gather(play_service.finish(game.code), play_service.finish(game.code))
     assert flaky.calls == 1
     assert len(world.sent(game.code, "game_persisted", start)) == 1
+
+
+# ------------------------------------------------------- the in-flight window
+@aio
+async def test_a_game_is_in_flight_from_its_first_write_through_its_retries(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every write, the first one included, runs with the room in flight, and a
+    finish() between two attempts does nothing."""
+    game = await world.running_game()
+    await world.finish_early(game.code)
+    seen: list[bool] = []
+    flaky = FlakyStore(failures=2)
+
+    def watching(room: dict[str, Any], session_factory: Any = None) -> str | None:
+        seen.append(game.code in play_service._persisting)
+        return flaky(room, session_factory)
+
+    monkeypatch.setattr(db_service, "persist_finished_game", watching)
+    monkeypatch.setattr(play_service, "PERSIST_RETRY_DELAYS", (0.0, 0.0, 0.0))
+    await play_service.finish(game.code)  # fails; the retries wait to run
+    await play_service.finish(game.code)  # in flight: does nothing
+    assert flaky.calls == 1
+    await settle()
+    assert seen == [True, True, True]
+    assert flaky.calls == 3 and len(flaky.stored) == 1
+    assert game.code not in play_service._persisting
+
+
+@aio
+async def test_the_success_announcement_is_sent_once_the_game_left_flight(
+    world: World, store: FlakyStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fails against a guard that still holds the room while game_persisted goes
+    out: a rejoin arriving then could not start an attempt of its own."""
+    monkeypatch.setattr(play_service, "PERSIST_RETRY_DELAYS", (0.0, 0.0, 0.0))
+    game = await world.running_game()
+    await world.finish_early(game.code)
+    in_flight: list[bool] = []
+    real_send = play_service.send
+
+    async def watching(emits: Any) -> None:
+        if any(e.event == "game_persisted" for e in emits):
+            in_flight.append(game.code in play_service._persisting)
+        await real_send(emits)
+
+    monkeypatch.setattr(play_service, "send", watching)
+    await play_service.finish(game.code)  # fails
+    await settle()  # the first retry stores it and announces it
+    assert store.stored and in_flight == [False]
+
+    in_flight.clear()
+    await world.mutate(game.code, lambda room: room.update(persisted=False))
+    await play_service.finish(game.code)  # the first write succeeds this time
+    assert in_flight == [False]
+
+
+@aio
+async def test_the_give_up_is_logged_once_the_game_left_flight(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fails against a guard that still holds the room while the last retry's
+    failure is announced."""
+    monkeypatch.setattr(db_service, "persist_finished_game", FlakyStore(failures=99))
+    monkeypatch.setattr(play_service, "PERSIST_RETRY_DELAYS", (0.0, 0.0, 0.0))
+    game = await world.running_game()
+    await world.finish_early(game.code)
+    in_flight: list[bool] = []
+    monkeypatch.setattr(
+        play_service.logger,
+        "error",
+        lambda *args, **kwargs: in_flight.append(game.code in play_service._persisting),
+    )
+    await play_service.finish(game.code)
+    await settle()
+    assert in_flight == [False]

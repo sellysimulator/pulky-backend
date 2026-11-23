@@ -208,13 +208,18 @@ async def finish(room_code: str) -> None:
     """Persist a finished room outside any lock, then announce the game id. A failed
     write is retried in the background (``PERSIST_RETRY_DELAYS``); while a write or
     its retries are in flight for the room, another call does nothing. A rejoin or a
-    resync of a finished room that is not stored calls this again (spec 13.5)."""
+    resync of a finished room that is not stored calls this again (spec 13.5).
+
+    The room is in flight from before the first write until the last attempt has
+    ended, and leaves before the outcome is announced, so a rejoin arriving during
+    the announcement can start a new attempt."""
     if room_code in _persisting:
         return
     _persisting.add(room_code)
     retrying = False
     try:
-        if not await _persist(room_code) and PERSIST_RETRY_DELAYS:
+        emits = await _persist(room_code)
+        if emits is None and PERSIST_RETRY_DELAYS:
             task = asyncio.create_task(_retry_persist(room_code))
             _retries.add(task)
             task.add_done_callback(_retries.discard)
@@ -222,25 +227,33 @@ async def finish(room_code: str) -> None:
     finally:
         if not retrying:
             _persisting.discard(room_code)
+    if emits:
+        await send(emits)
 
 
 async def _retry_persist(room_code: str) -> None:
+    emits: list[Emit] | None = None
     try:
         for delay in PERSIST_RETRY_DELAYS:
             await asyncio.sleep(delay)
-            if await _persist(room_code):
-                return
+            emits = await _persist(room_code)
+            if emits is not None:
+                break
+    finally:
+        _persisting.discard(room_code)
+    if emits is None:
         logger.error(
             "room %s could not be persisted after %d retries",
             room_code,
             len(PERSIST_RETRY_DELAYS),
         )
-    finally:
-        _persisting.discard(room_code)
+    elif emits:
+        await send(emits)
 
 
-async def _persist(room_code: str) -> bool:
-    """One write; ``False`` when it failed and is worth trying again."""
+async def _persist(room_code: str) -> list[Emit] | None:
+    """One write. ``None`` when it failed and is worth trying again; otherwise the
+    announcement to send (empty when there was nothing to store)."""
     state = state_service.get_state_service()
     try:
         async with state.lock(room_code):
@@ -250,29 +263,23 @@ async def _persist(room_code: str) -> bool:
             or snapshot.get("persisted")
             or snapshot.get("state") != RoomState.FINISHED
         ):
-            return True
+            return []
         game_id = await asyncio.to_thread(db_service.persist_finished_game, snapshot)
         if game_id is None:
-            return False
-        emits: list[Emit] = []
+            return None
         async with state.lock(room_code):
             room = await state.get_room(room_code)
             if room is None:
-                return True
+                return []
             room["persisted"] = True
-            emits.append(
-                Emit(
-                    room["room_code"],
-                    "game_persisted",
-                    {"seq": state.next_seq(room), "game_id": game_id},
-                )
-            )
+            seq = state.next_seq(room)
             await state.save_room(room["room_code"], room)
-        await send(emits)
-        return True
+        return [
+            Emit(room["room_code"], "game_persisted", {"seq": seq, "game_id": game_id})
+        ]
     except Exception:
         logger.exception("room %s could not be persisted", room_code)
-        return False
+        return None
 
 
 def needs_persist(room: dict | None) -> bool:
