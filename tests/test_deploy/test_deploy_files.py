@@ -33,7 +33,9 @@ LITERAL_VARS = {
     "REDIS_ENABLED": "false",
     "DB_REQUIRE_SSL": "true",
     "DEBUG": "false",
-    "CORS_ORIGINS": '["https://pulkysim.web.app"]',
+    "CORS_ORIGINS": (
+        '["https://pulkysim.web.app", "https://pulkysim.firebaseapp.com"]'
+    ),
 }
 
 SECRET_PATTERNS = [

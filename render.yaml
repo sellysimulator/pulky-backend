@@ -18,7 +18,7 @@ services:
       - key: DEBUG
         value: "false"
       - key: CORS_ORIGINS
-        value: '["https://pulkysim.web.app"]'
+        value: '["https://pulkysim.web.app", "https://pulkysim.firebaseapp.com"]'
       # Set in the Render dashboard, never here. DB_*: Pulky's Neon project (DB_HOST is the
       # direct endpoint, without -pooler; DB_SSL_CA the ISRG Root X1 + X2 PEM text); DEPLOY.md.
       - key: DB_HOST
