@@ -7,6 +7,7 @@ services:
     runtime: docker
     healthCheckPath: /api/v1/health
     plan: free
+    region: virginia
     autoDeployTrigger: checksPass
     # Migrations run at container startup (Dockerfile CMD): free instances have no pre-deploy command.
     numInstances: 1

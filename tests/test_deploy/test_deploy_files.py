@@ -70,6 +70,7 @@ def check_render(doc: Any) -> list[str]:
         "name": "pulky-backend",
         "healthCheckPath": "/api/v1/health",
         "plan": "free",
+        "region": "virginia",
         "autoDeployTrigger": "checksPass",
     }
     for key, value in expected.items():
