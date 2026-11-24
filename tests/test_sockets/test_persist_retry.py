@@ -41,9 +41,11 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FlakyStore:
 
 
 async def settle() -> None:
-    """Let the background retries run (their delays are 0 in these tests)."""
-    for _ in range(200):
-        await asyncio.sleep(0)
+    """Wait for the background retries to end (their delays are 0 in these tests).
+    Each write runs in a thread, so turning the event loop over a fixed number of
+    times is not enough on a slow machine."""
+    if play_service._retries:
+        await asyncio.wait_for(asyncio.gather(*play_service._retries), timeout=10)
 
 
 def persisted_ids(world: World, code: str, since: int = 0) -> list[str]:
