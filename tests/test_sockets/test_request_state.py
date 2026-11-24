@@ -56,7 +56,7 @@ async def test_the_host_gets_a_full_host_state(world: World) -> None:
     assert state["state"] == "running"
     assert state["day"] == 3
     engine = room_engine(before)
-    expected = game_service.host_state(before, 0, True)
+    expected = game_service.host_state(before, engine, 0, True)
     assert norm(strip(state)) == norm(strip(expected))
     for alias in ("P1", "P2"):
         assert len(state["players"][alias]["own_history"]) == 2
@@ -162,7 +162,7 @@ async def test_after_the_end_host_and_player_get_full_states(
 ) -> None:
     game = await world.running_game()
     await play_day(game, 1)
-    await world.finish_early(game.code)
+    await world.finish_early(game.code, game_id="pub-1")  # stored: no retry follows
     room = await world.room(game.code)
 
     got = await ask(world, "host-1", game.code)

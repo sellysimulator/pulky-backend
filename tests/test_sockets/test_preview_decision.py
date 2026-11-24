@@ -8,13 +8,17 @@ from typing import Any
 import pytest
 
 from app.services import game_service
+from app.services.state_service import get_state_service
+from app.sockets.handlers.host import end_game_early
 from app.sockets.handlers.play import preview_decision
-from tests.test_sockets.conftest import World
+from tests.test_sockets.conftest import World, count_engine_builds
 from tests.test_sockets.test_submit import (  # noqa: F401
     PersistSpy,
     _never_touch_a_real_database,
     dec,
     persist,
+    play_day,
+    room_engine,
     submit,
 )
 
@@ -95,3 +99,118 @@ async def test_a_lobby_or_finished_room_is_not_running(world: World) -> None:
     await world.finish_early(game.code)
     answer = await preview_decision("p1", ask(game.code, 1))
     assert answer == {"code": "GAME_NOT_RUNNING", "message": MSG_NOT_RUNNING}
+
+
+# ------------------------------------------------------------ engine reuse
+@aio
+async def test_previews_of_an_unchanged_room_build_its_engine_once(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fails against a preview that rebuilds the engine from the room every time."""
+    game = await world.running_game()
+    room = await world.room(game.code)
+    built = count_engine_builds(monkeypatch)
+    first = await preview_decision("p1", ask(game.code, 1, order_spot=12))
+    second = await preview_decision("p1", ask(game.code, 1, order_spot=20))
+    assert len(built) == 1
+    engine = room_engine(room)
+    draft = ask(game.code, 1, order_spot=20)["decision"]
+    assert second["preview"] == engine.decision_preview("P1", draft)
+    assert first["preview"]["outlay"] != second["preview"]["outlay"]
+
+
+@aio
+async def test_a_preview_follows_the_room_once_it_changes(world: World) -> None:
+    game = await world.running_game()
+    await preview_decision("p1", ask(game.code, 1))
+    await submit(game, "P1", 1)
+    await submit(game, "P2", 1)  # day 1 resolves
+    answer = await preview_decision("p1", ask(game.code, 2, order_spot=5))
+    engine = room_engine(await world.room(game.code))
+    draft = ask(game.code, 2, order_spot=5)["decision"]
+    assert answer["preview"] == engine.decision_preview("P1", draft)
+    assert answer["preview"]["day"] == 2
+
+
+@aio
+async def test_a_reissued_room_code_is_never_served_the_old_rooms_engine(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same code and seq, another host secret: another room, so another engine."""
+    game = await world.running_game()
+    await preview_decision("p1", ask(game.code, 1))
+    seq = (await world.room(game.code))["seq"]
+
+    def reissue(room: dict[str, Any]) -> None:
+        room["host_secret"] = "another-room"
+        room["seq"] = seq
+
+    await world.mutate(game.code, reissue)
+    built = count_engine_builds(monkeypatch)
+    await preview_decision("p1", ask(game.code, 1))
+    assert len(built) == 1
+
+
+# ------------------------------------------------------- cache entries end
+def cached(code: str) -> bool:
+    return code in game_service._preview_engines
+
+
+@aio
+async def test_a_game_ended_early_drops_its_cached_engine(world: World) -> None:
+    """Fails against a cache that keeps a finished room's engine until evicted."""
+    game = await world.running_game()
+    await preview_decision("p1", ask(game.code, 1))
+    assert cached(game.code)
+    await end_game_early("host-1", {"room_id": game.code, "host_secret": game.secret})
+    assert (await world.room(game.code))["state"] == "finished"
+    assert not cached(game.code)
+
+
+@aio
+async def test_a_game_played_to_its_last_day_drops_its_cached_engine(
+    world: World, persist: PersistSpy  # noqa: F811
+) -> None:
+    game = await world.running_game(
+        {"duration_days": 7, "futures": {"horizon_days": 3}}
+    )
+    for day in range(1, 7):
+        await play_day(game, day)
+    await preview_decision("p1", ask(game.code, 7))
+    assert cached(game.code)
+    await play_day(game, 7)
+    assert (await world.room(game.code))["state"] == "finished"
+    assert not cached(game.code)
+
+
+@aio
+async def test_a_preview_for_a_room_that_is_gone_drops_its_cached_engine(
+    world: World,
+) -> None:
+    """Fails against a cache that keeps an expired or deleted room's engine."""
+    game = await world.running_game()
+    await preview_decision("p1", ask(game.code, 1))
+    await get_state_service().delete_room(game.code)
+    answer = await preview_decision("p1", ask(game.code, 1))
+    assert answer["code"] == "NOT_IN_ROOM"
+    assert not cached(game.code)
+
+
+@aio
+async def test_an_engine_unused_for_a_room_lifetime_is_dropped(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An entry nobody asked for during a whole room TTL may belong to an expired
+    room: the next preview of any room drops it."""
+    clock = [1000.0]
+    monkeypatch.setattr(game_service.time, "monotonic", lambda: clock[0])
+    old = await world.running_game()
+    await preview_decision("p1", ask(old.code, 1))
+    clock[0] += game_service.PREVIEW_ENGINE_IDLE_SECONDS - 1
+    new = await world.running_game()
+    await preview_decision(new.sids["P1"], ask(new.code, 1))
+    assert cached(old.code) and cached(new.code)
+    clock[0] += 1
+    await preview_decision(new.sids["P1"], ask(new.code, 1))
+    assert not cached(old.code)
+    assert cached(new.code)

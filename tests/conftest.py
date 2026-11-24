@@ -155,6 +155,16 @@ def _fresh_export_cache() -> Iterator[None]:
     export_service.clear_cache()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_preview_engines() -> Iterator[None]:
+    """Every test starts with no preview engine cached (spec 12.4)."""
+    from app.services import game_service
+
+    game_service.clear_preview_engines()
+    yield
+    game_service.clear_preview_engines()
+
+
 @pytest.fixture
 def fake_redis(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRedis]:
     from app.services import state_backend

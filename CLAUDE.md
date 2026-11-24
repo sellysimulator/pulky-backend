@@ -64,7 +64,8 @@ in Pulky's own Neon project (user `neondb_owner`). `DB_HOST` is Neon's direct en
 the `-pooler` one: the pooler rejects the `options=-c timezone=UTC` startup parameter.
 `DB_SSL_CA` (the ISRG Root X1 + X2 PEM bundle, the same for all four games, PEM text or path)
 means `sslmode=verify-full`; without it `DB_REQUIRE_SSL=true` means `sslmode=require`
-(encrypted, not verified). Every session runs in UTC (`db_connect_args`).
+(encrypted, not verified). Every session runs in UTC (`db_connect_args`), and a connection
+attempt gives up after 10 s (`connect_timeout`; never a startup `statement_timeout`).
 `DB_POOL_SIZE` + `DB_MAX_OVERFLOW` default to 7 + 2 = 9 per instance, so a deploy fits
 Pulky's budget of 20 connections (`DEPLOY.md`). Develop against a local Docker PostgreSQL 18,
 not Neon: a local backend against Neon is one more instance and breaks that budget.
@@ -97,6 +98,9 @@ message at startup and every signed-in user is rejected.
   /users/me/hosted-games`; it grants nothing (no export, claim, results or host authority) and
   `host_uid` is never sent (`tests/test_sockets/test_host_record.py`). Live host recovery
   stays on `host_identity`.
+- A handler builds the engine from the room once (`game_service.load_engine` /
+  `require_engine`) and passes it to every payload builder (`player_state`, `host_state`,
+  `play_service.resolution_emits`); a builder never loads it again (spec 13.2).
 - Handlers that can fail are wrapped in `@guarded()`; errors never carry exception text.
 - REST errors are `HTTPException` with a string `detail`; never return `str(e)`.
 - Never log secrets, tokens, identities or payloads.
@@ -170,7 +174,11 @@ message at startup and every signed-in user is rejected.
     (`affordable`, the one `submit` uses), tier cards for the draft (`plan_rows`, so the
     Paid-price card follows the typed spot order), offer (`offer_lots`, the one the peer
     market uses) and field messages (`records.decision_field_issues`, the checks
-    `parse_decision` makes). Read-only: no lock, no save, no emit.
+    `parse_decision` makes). Read-only: no lock, no save, no emit. It takes the engine
+    from `game_service.preview_engine` (64 engines cached per process, keyed by room code
+    and checked against `seq` and the host secret), never `load_engine`. An entry is
+    dropped when its game finishes or ends early (`_mark_finished`), when a preview finds
+    its room gone, and when it went unused for a whole room TTL (24 h).
   - `POST /config/preview` (`app/core/previews.py` `config_preview`): every number of the
     host screen's previews, calculator and help examples. It replaces each blank hidden
     default with 0 before computing and nulls every figure that needs it; never fill a

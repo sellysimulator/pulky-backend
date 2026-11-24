@@ -83,8 +83,6 @@ async def test_a_guest_dashboard_records_nothing(world: World) -> None:
         {"guestId": HOST_UID},  # a uid-shaped guest id is not a guest id at all
         {"guestId": f"user_{'0' * 36}"},
         {"guestId": HOST_UID, "uid": HOST_UID},
-        {"uid": HOST_UID},
-        None,
     ],
 )
 async def test_an_unverified_handshake_never_records_a_host(
@@ -97,6 +95,17 @@ async def test_an_unverified_handshake_never_records_a_host(
     await start_game(DASHBOARD, {"room_id": code, "host_secret": secret})
     assert (await world.room(code))["state"] == "running"
     assert await host_uid(world, code) is None
+
+
+@pytest.mark.parametrize("auth", [{"uid": HOST_UID}, None])
+async def test_a_handshake_naming_no_identity_is_refused_and_records_nothing(
+    world: World, auth: dict[str, str] | None
+) -> None:
+    """A uid the client names is no identity at all: the handshake is refused."""
+    await ready_room(world)
+    assert await connect(DASHBOARD, {}, auth) is False
+    assert DASHBOARD not in world.sm.sid_to_verified_uid
+    assert DASHBOARD not in world.sm.sid_to_identity
 
 
 async def test_a_rejected_token_records_nothing(world: World) -> None:

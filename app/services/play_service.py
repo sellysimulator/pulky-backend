@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from app.core.engine import DayOutcome
+from app.core.engine import DayOutcome, PulkyEngine
 from app.core.enums import RoomState
 from app.core.records import parse_decision
 from app.services import db_service, game_service, state_service
@@ -31,6 +31,7 @@ def _mark_finished(room: dict) -> None:
     room["state"] = RoomState.FINISHED.value
     room["finished_at"] = _now()
     room["game_id"] = room.get("game_id") or uuid.uuid4().hex
+    game_service.forget_preview_engine(room["room_code"])
 
 
 def _game_finished(room: dict, results: dict, seq: int) -> dict:
@@ -41,7 +42,9 @@ def _sids_for(room: dict, alias: str) -> list[str]:
     return [s for s, a in room["sid_to_alias"].items() if a == alias]
 
 
-def _daily_state_emits(room: dict, next_seq: Callable[[dict], int]) -> list[Emit]:
+def _daily_state_emits(
+    room: dict, engine: PulkyEngine, next_seq: Callable[[dict], int]
+) -> list[Emit]:
     """Daily ``your_state`` to every seated sid (shared seq), then ``host_state``."""
     emits: list[Emit] = []
     state_seq = next_seq(room)
@@ -50,7 +53,7 @@ def _daily_state_emits(room: dict, next_seq: Callable[[dict], int]) -> list[Emit
             Emit(
                 sid,
                 "your_state",
-                game_service.player_state(room, alias, state_seq, False),
+                game_service.player_state(room, engine, alias, state_seq, False),
             )
         )
     host_sid = room.get("host_sid")
@@ -59,7 +62,7 @@ def _daily_state_emits(room: dict, next_seq: Callable[[dict], int]) -> list[Emit
             Emit(
                 host_sid,
                 "host_state",
-                game_service.host_state(room, next_seq(room), False),
+                game_service.host_state(room, engine, next_seq(room), False),
             )
         )
     return emits
@@ -94,7 +97,7 @@ def apply_submission(
         started = time.perf_counter()
         outcome = engine.resolve_day()
         game_service.store_engine(room, engine)
-        emits += resolution_emits(room, outcome, next_seq)
+        emits += resolution_emits(room, engine, outcome, next_seq)
         logger.info(
             "room %s day %d resolved in %d ms",
             code,
@@ -109,7 +112,7 @@ def apply_submission(
             Emit(
                 sid,
                 "your_state",
-                game_service.player_state(room, alias, state_seq, False),
+                game_service.player_state(room, engine, alias, state_seq, False),
             )
         )
     host_sid = room.get("host_sid")
@@ -118,19 +121,20 @@ def apply_submission(
             Emit(
                 host_sid,
                 "host_state",
-                game_service.host_state(room, next_seq(room), False),
+                game_service.host_state(room, engine, next_seq(room), False),
             )
         )
     return emits, False
 
 
 def resolution_emits(
-    room: dict, outcome: DayOutcome, next_seq: Callable[[dict], int]
+    room: dict,
+    engine: PulkyEngine,
+    outcome: DayOutcome,
+    next_seq: Callable[[dict], int],
 ) -> list[Emit]:
-    """The spec 12.3 sequence for a resolved day. The engine must already be stored."""
-    engine = game_service.load_engine(room)
-    if engine is None:
-        raise ValueError("The room has no engine.")
+    """The spec 12.3 sequence for a resolved day, built from ``engine``, the one that
+    resolved it (already stored in the room)."""
     code = room["room_code"]
     if outcome.finished:
         _mark_finished(room)
@@ -157,7 +161,7 @@ def resolution_emits(
                 {"seq": record_seq, "day": outcome.day, "record": record.to_payload()},
             )
         )
-    emits += _daily_state_emits(room, next_seq)
+    emits += _daily_state_emits(room, engine, next_seq)
     if outcome.finished:
         emits.append(
             Emit(
@@ -181,7 +185,7 @@ def end_early(room: dict, next_seq: Callable[[dict], int]) -> list[Emit]:
     engine.end_early()
     game_service.store_engine(room, engine)
     _mark_finished(room)
-    emits = _daily_state_emits(room, next_seq)
+    emits = _daily_state_emits(room, engine, next_seq)
     emits.append(
         Emit(
             room["room_code"],
@@ -193,31 +197,95 @@ def end_early(room: dict, next_seq: Callable[[dict], int]) -> list[Emit]:
     return emits
 
 
+# A failed end-of-game write is tried again in the background after each of these
+# delays (seconds). The write is keyed by the game id, so a retry stores it once.
+PERSIST_RETRY_DELAYS: tuple[float, ...] = (2.0, 10.0, 30.0)
+_persisting: set[str] = set()  # room codes with a write or its retries in flight
+_retries: set[asyncio.Task[None]] = set()  # keeps the retry tasks referenced
+
+
 async def finish(room_code: str) -> None:
-    """Persist a finished room outside any lock, then announce the game id."""
+    """Persist a finished room outside any lock, then announce the game id. A failed
+    write is retried in the background (``PERSIST_RETRY_DELAYS``); while a write or
+    its retries are in flight for the room, another call does nothing. A rejoin or a
+    resync of a finished room that is not stored calls this again (spec 13.5).
+
+    The room is in flight from before the first write until the last attempt has
+    ended, and leaves before the outcome is announced, so a rejoin arriving during
+    the announcement can start a new attempt."""
+    if room_code in _persisting:
+        return
+    _persisting.add(room_code)
+    retrying = False
+    try:
+        emits = await _persist(room_code)
+        if emits is None and PERSIST_RETRY_DELAYS:
+            task = asyncio.create_task(_retry_persist(room_code))
+            _retries.add(task)
+            task.add_done_callback(_retries.discard)
+            retrying = True
+    finally:
+        if not retrying:
+            _persisting.discard(room_code)
+    if emits:
+        await send(emits)
+
+
+async def _retry_persist(room_code: str) -> None:
+    emits: list[Emit] | None = None
+    try:
+        for delay in PERSIST_RETRY_DELAYS:
+            await asyncio.sleep(delay)
+            emits = await _persist(room_code)
+            if emits is not None:
+                break
+    finally:
+        _persisting.discard(room_code)
+    if emits is None:
+        logger.error(
+            "room %s could not be persisted after %d retries",
+            room_code,
+            len(PERSIST_RETRY_DELAYS),
+        )
+    elif emits:
+        await send(emits)
+
+
+async def _persist(room_code: str) -> list[Emit] | None:
+    """One write. ``None`` when it failed and is worth trying again; otherwise the
+    announcement to send (empty when there was nothing to store)."""
     state = state_service.get_state_service()
     try:
         async with state.lock(room_code):
             snapshot = await state.get_room(room_code)
-        if snapshot is None or snapshot.get("persisted"):
-            return
+        if (
+            snapshot is None
+            or snapshot.get("persisted")
+            or snapshot.get("state") != RoomState.FINISHED
+        ):
+            return []
         game_id = await asyncio.to_thread(db_service.persist_finished_game, snapshot)
         if game_id is None:
-            return
-        emits: list[Emit] = []
+            return None
         async with state.lock(room_code):
             room = await state.get_room(room_code)
             if room is None:
-                return
+                return []
             room["persisted"] = True
-            emits.append(
-                Emit(
-                    room["room_code"],
-                    "game_persisted",
-                    {"seq": state.next_seq(room), "game_id": game_id},
-                )
-            )
+            seq = state.next_seq(room)
             await state.save_room(room["room_code"], room)
-        await send(emits)
+        return [
+            Emit(room["room_code"], "game_persisted", {"seq": seq, "game_id": game_id})
+        ]
     except Exception:
         logger.exception("room %s could not be persisted", room_code)
+        return None
+
+
+def needs_persist(room: dict | None) -> bool:
+    """A finished room whose game is not stored yet: a rejoin or resync retries it."""
+    return (
+        room is not None
+        and room.get("state") == RoomState.FINISHED
+        and not room.get("persisted")
+    )

@@ -406,6 +406,28 @@ async def test_leave_in_the_lobby_removes_the_seat(world: World) -> None:
 
 
 @aio
+async def test_a_leaver_is_out_of_the_room_channel_before_the_room_hears_of_it(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The room's lobby_update about the leave must not reach the leaver: its tab is
+    moving on, and a later room's store would take the old room's seq."""
+    code = await world.create_room()
+    await world.seat(code, "p1", 1)
+    await world.seat(code, "p2", 2)
+    real_leave_room = world.sm.leave_room
+
+    async def recording(sid: str, room_code: str) -> None:
+        world.sm.records.append((sid, "<left channel>", {"room": room_code}, None))
+        await real_leave_room(sid, room_code)
+
+    monkeypatch.setattr(world.sm, "leave_room", recording)
+    start = world.mark()
+    await world.leave(code, "p2")
+    order = [r[1] for r in world.sm.records[start:]]
+    assert order.index("<left channel>") < order.index("lobby_update")
+
+
+@aio
 async def test_leave_accepts_a_lowercase_room_code(world: World) -> None:
     code = await world.create_room()
     await world.seat(code, "p1", 1)

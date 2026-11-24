@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from app.core.config_models import GameConfig
+from app.core.engine import PulkyEngine
 from app.services import game_service
 from app.services.state_service import get_state_service, reset_state_service
 from app.sockets.handlers.connection import connect
@@ -88,6 +89,19 @@ def all_keys(payload: Any) -> Iterator[str]:
     elif isinstance(payload, (list, tuple)):
         for item in payload:
             yield from all_keys(item)
+
+
+def count_engine_builds(monkeypatch: pytest.MonkeyPatch) -> list[None]:
+    """One entry per engine built from a room's stored payload."""
+    built: list[None] = []
+    real = PulkyEngine.from_payload
+
+    def counting(payload: dict[str, Any], config: GameConfig) -> PulkyEngine:
+        built.append(None)
+        return real(payload, config)
+
+    monkeypatch.setattr(PulkyEngine, "from_payload", staticmethod(counting))
+    return built
 
 
 @dataclass
@@ -261,6 +275,20 @@ class World:
         await start_game(game.host_sid, game.start_data())
         assert (await self.room(code))["state"] == "running"
         return game
+
+
+@pytest.fixture(autouse=True)
+def _persistence_stays_in_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No socket test reaches a database or leaves a retry running: persisting fails,
+    as with no database, unless the test installs its own stand-in (``persist`` of
+    test_submit), and a failure is not retried unless the test sets the delays."""
+    from app.services import db_service, play_service
+
+    def unavailable(room: dict[str, Any], session_factory: Any = None) -> None:
+        return None
+
+    monkeypatch.setattr(db_service, "persist_finished_game", unavailable)
+    monkeypatch.setattr(play_service, "PERSIST_RETRY_DELAYS", ())
 
 
 @pytest.fixture

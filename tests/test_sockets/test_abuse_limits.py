@@ -31,16 +31,16 @@ async def test_handshake_refuses_sockets_past_the_ip_cap(
 ) -> None:
     monkeypatch.setattr(abuse, "SOCKETS_PER_IP", 2)
     assert await connect("s1", environ("1.1.1.1"), {"guestId": guest(1)}) is None
-    assert await connect("s2", environ("1.1.1.1"), None) is None
+    assert await connect("s2", environ("1.1.1.1"), {"guestId": guest(2)}) is None
     with pytest.raises(
         socketio.exceptions.ConnectionRefusedError, match="Too many connections"
     ) as refused:
-        await connect("s3", environ("1.1.1.1"), None)
+        await connect("s3", environ("1.1.1.1"), {"guestId": guest(3)})
     assert refused.value.error_args["message"] == TOO_MANY_CONNECTIONS_MESSAGE
     assert "s3" not in world.sm.sid_to_identity
-    assert await connect("t1", environ("2.2.2.2"), None) is None
+    assert await connect("t1", environ("2.2.2.2"), {"guestId": guest(4)}) is None
     await disconnect("s1")
-    assert await connect("s3", environ("1.1.1.1"), None) is None
+    assert await connect("s3", environ("1.1.1.1"), {"guestId": guest(3)}) is None
 
 
 @aio
@@ -49,7 +49,26 @@ async def test_a_rejected_token_frees_its_place(
 ) -> None:
     monkeypatch.setattr(abuse, "SOCKETS_PER_IP", 1)
     assert await connect("s1", environ("1.1.1.1"), {"idToken": "bad"}) is False
-    assert await connect("s2", environ("1.1.1.1"), None) is None
+    assert await connect("s2", environ("1.1.1.1"), {"guestId": guest(2)}) is None
+
+
+@aio
+async def test_a_handshake_that_fails_midway_frees_its_place(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fails against a handshake that keeps the slot when it raises after taking it."""
+    from app.api import deps
+
+    monkeypatch.setattr(abuse, "SOCKETS_PER_IP", 1)
+
+    async def broken(token: object) -> None:
+        raise RuntimeError("verification crashed")
+
+    monkeypatch.setattr(deps, "verify_id_token", broken)
+    with pytest.raises(RuntimeError):
+        await connect("s1", environ("1.1.1.1"), {"idToken": "any"})
+    assert "s1" not in world.sm.sid_to_identity
+    assert await connect("s2", environ("1.1.1.1"), {"guestId": guest(2)}) is None
 
 
 @aio
@@ -59,10 +78,10 @@ async def test_joins_naming_unknown_rooms_run_out_per_ip(
     """Fails against a server that lets one IP guess room codes without limit."""
     monkeypatch.setattr(abuse.lookup_limiter, "limit", 3)
     for n in range(3):
-        await connect(f"s{n}", environ("1.1.1.1"), None)
+        await connect(f"s{n}", environ("1.1.1.1"), {"guestId": guest(n)})
         await join(f"s{n}", {"room_id": "ZZZ222"})
     assert world.last("s2", "join_error") == {"message": "No room with that code."}
-    await connect("s9", environ("1.1.1.1"), None)
+    await connect("s9", environ("1.1.1.1"), {"guestId": guest(9)})
     await join("s9", {"room_id": "ZZZ223"})
     assert world.last("s9", "join_error") == {"message": abuse.TOO_MANY_REQUESTS}
 
@@ -118,7 +137,7 @@ async def test_a_failing_cleanup_still_releases_the_socket_slot(
         await disconnect("p1")
     assert not abuse._open_per_ip and "p1" not in abuse._sid_ip
     assert "p1" not in world.sm.sid_to_identity
-    assert await connect("p2", {}, None) is None
+    assert await connect("p2", {}, {"guestId": guest(2)}) is None
 
 
 @aio

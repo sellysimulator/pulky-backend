@@ -105,6 +105,7 @@ def test_engine_connects_with_the_session_time_zone_set_to_utc(
     monkeypatch.setattr(db_session, "create_engine", fake_create_engine)
     db_session.get_engine()
     assert seen["connect_args"]["options"] == "-c timezone=UTC"
+    assert seen["connect_args"]["connect_timeout"] == 10  # seconds (libpq)
 
 
 def test_session_local_is_a_sessionmaker() -> None:
