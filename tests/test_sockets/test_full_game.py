@@ -1,12 +1,11 @@
-# ruff: noqa: F811
 """A full recorded game, lobby to game_persisted.
 
 The redaction audit of spec 11.1 runs over every emit of the game. The secret
 config values are the distinctive ones of the socket fixtures (SECRET_PATCH), and day 1
 has two real peer trades (see test_play_redaction for the scenario).
 
-Persistence seam: the spy of test_submit for every test but the last, which is
-the ``dbschema`` test: it restores the real function and points
+Persistence seam: the spy of tests/fixtures/play_loop.py for every test but the last,
+which is the ``dbschema`` test: it restores the real function and points
 ``app.db.session.SessionLocal`` at the Testcontainers PostgreSQL.
 """
 
@@ -25,8 +24,14 @@ from app.services.db_service import (
     persist_finished_game as real_persist_finished_game,
 )
 from tests.conftest import contains_key, contains_value
-from tests.fixtures.postgres import db_session, pg_url  # noqa: F401
-from tests.test_sockets.conftest import (
+from tests.fixtures.play_loop import (
+    PersistSpy,
+    collect_values,
+    play_day,
+    room_engine,
+    submit,
+)
+from tests.fixtures.sockets import (
     SECRET_KEY_NAMES,
     SECRET_PATCH,
     SECRET_VALUES,
@@ -46,16 +51,8 @@ from tests.test_sockets.test_play_redaction import (
     player_facing,
     room_payloads,
 )
-from tests.test_sockets.test_submit import (  # noqa: F401
-    PersistSpy,
-    _never_touch_a_real_database,
-    collect_values,
-    persist,
-    play_day,
-    room_engine,
-    submit,
-)
 
+pytestmark = pytest.mark.usefixtures("persist")
 aio = pytest.mark.asyncio
 DAYS = 7
 
@@ -228,9 +225,7 @@ async def test_the_decision_of_day_one_is_in_no_broadcast_for_the_whole_game(
 
 # ------------------------------------------------------------- real database
 @pytest.fixture
-def real_persistence(
-    pg_url: str, monkeypatch: pytest.MonkeyPatch  # noqa: F811
-) -> Iterator[None]:
+def real_persistence(pg_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     from app.db import session as db_session_module
 
     engine = create_engine(pg_url)
@@ -243,7 +238,7 @@ def real_persistence(
 @aio
 @pytest.mark.dbschema
 async def test_a_full_game_persists_to_postgres_and_announces_the_game_id(
-    world: World, real_persistence: None, db_session: Session  # noqa: F811
+    world: World, real_persistence: None, db_session: Session
 ) -> None:
     game = await play_whole_game(world)
     records = world.sm.records

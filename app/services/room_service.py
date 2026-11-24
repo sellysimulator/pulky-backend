@@ -4,22 +4,23 @@ import hmac
 import re
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.core import config_models
 from app.core.enums import RoomState
 from app.core.limits import MAX_DISPLAY_NAME, MIN_PLAYERS_TO_START
-from app.services.state_service import ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH
+from app.core.records import alias_number
 from app.sockets import manager
 
 
 @dataclass(frozen=True)
 class Emit:
-    target: str  # a room code (room emit) or a sid
+    target: str  # a room code when ``to_room``, otherwise a sid
     event: str
     data: dict
     skip_sid: str | None = None  # room emits only
+    to_room: bool = field(default=False, kw_only=True)
 
 
 class ConfigLocked(Exception):
@@ -29,14 +30,14 @@ class ConfigLocked(Exception):
         super().__init__(config_models.MSG_CONFIG_LOCKED)
 
 
+MSG_HOST_ONLY = "Only the host can do that."
+MSG_NOT_IN_ROOM = "You are not in this room."
 STATUS_NOT_FOUND = "No room with that code."
 STATUS_STARTED = "This game has already started."
 STATUS_FINISHED = "This game has finished."
 STATUS_FULL = "This room is full."
 START_NEED_PLAYERS = f"Waiting for at least {MIN_PLAYERS_TO_START} players."
 START_ALREADY = "The game has already started."
-
-_ROOM_CODE_RE = re.compile(f"[{ROOM_CODE_ALPHABET}]{{{ROOM_CODE_LENGTH}}}")
 
 
 def check_host_secret(room: dict, data: Mapping[str, Any] | None) -> bool:
@@ -104,15 +105,10 @@ def can_start(room: dict) -> tuple[bool, str | None]:
     return True, None
 
 
-def _alias_number(alias: str) -> int:
-    digits = alias[1:]
-    return int(digits) if digits.isdigit() else 0
-
-
 def lobby_payload(room: dict, seq: int) -> dict:
     ok, reason = can_start(room)
     participants = sorted(
-        room.get("participants", {}).values(), key=lambda p: _alias_number(p["alias"])
+        room.get("participants", {}).values(), key=lambda p: alias_number(p["alias"])
     )
     return {
         "seq": seq,
@@ -253,10 +249,16 @@ def apply_config_update(
             "config_updated",
             {"seq": config_seq, "config": config_models.config_public(config)},
             skip_sid=host_sid or None,
+            to_room=True,
         )
     )
     emits.append(
-        Emit(room["room_code"], "lobby_update", lobby_payload(room, lobby_seq))
+        Emit(
+            room["room_code"],
+            "lobby_update",
+            lobby_payload(room, lobby_seq),
+            to_room=True,
+        )
     )
     return emits
 
@@ -264,7 +266,7 @@ def apply_config_update(
 async def send(emits: Sequence[Emit]) -> None:
     sockets = manager.get_socket_manager()
     for emit in emits:
-        if emit.skip_sid is not None or _ROOM_CODE_RE.fullmatch(emit.target):
+        if emit.to_room:
             await sockets.emit_to_room(
                 emit.target, emit.event, emit.data, skip_sid=emit.skip_sid
             )

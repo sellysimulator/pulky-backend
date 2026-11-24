@@ -33,7 +33,9 @@ LITERAL_VARS = {
     "REDIS_ENABLED": "false",
     "DB_REQUIRE_SSL": "true",
     "DEBUG": "false",
-    "CORS_ORIGINS": '["https://pulkysim.web.app"]',
+    "CORS_ORIGINS": (
+        '["https://pulkysim.web.app", "https://pulkysim.firebaseapp.com"]'
+    ),
 }
 
 SECRET_PATTERNS = [
@@ -68,6 +70,7 @@ def check_render(doc: Any) -> list[str]:
         "name": "pulky-backend",
         "healthCheckPath": "/api/v1/health",
         "plan": "free",
+        "region": "virginia",
         "autoDeployTrigger": "checksPass",
     }
     for key, value in expected.items():

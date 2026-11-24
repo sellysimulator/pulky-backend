@@ -1,4 +1,3 @@
-# ruff: noqa: F811
 """Schema of spec 13.5 as migrated."""
 
 from pathlib import Path
@@ -12,10 +11,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 from alembic import command
-from tests.fixtures.postgres import (  # noqa: F401
+from tests.fixtures.postgres import (
     alembic_config,
-    pg_container,
-    pg_url,
 )
 
 pytestmark = pytest.mark.dbschema
@@ -96,7 +93,7 @@ ALL_TABLES = {
 
 
 @pytest.fixture()
-def engine(pg_url: str) -> Any:  # noqa: F811
+def engine(pg_url: str) -> Any:
     eng = create_engine(pg_url)
     yield eng
     eng.dispose()
@@ -432,12 +429,12 @@ def test_user_stats_references_users(engine: Engine) -> None:
 # --- migration ----------------------------------------------------------------
 
 
-def test_alembic_check_reports_no_drift(pg_url: str) -> None:  # noqa: F811
+def test_alembic_check_reports_no_drift(pg_url: str) -> None:
     """Catches a model column missing from the migration (or vice versa)."""
     command.check(alembic_config(pg_url))
 
 
-def test_models_match_migrations(pg_url: str) -> None:  # noqa: F811
+def test_models_match_migrations(pg_url: str) -> None:
     import app.models.game  # noqa: F401
     import app.models.user  # noqa: F401
     from app.models.base import Base
@@ -477,7 +474,7 @@ def normalize(dump: str) -> str:
     return "\n".join(keep) + "\n"
 
 
-def test_ddl_snapshot_matches_migrations(pg_container: Any) -> None:  # noqa: F811
+def test_ddl_snapshot_matches_migrations(pg_container: Any) -> None:
     """``db/schema.postgres.sql`` is the DDL ``alembic upgrade head`` produces;
     regenerate it with ``scripts/db/gen_ddl.py`` after changing a migration."""
     result = pg_container.exec(
@@ -496,7 +493,7 @@ def test_ddl_snapshot_matches_migrations(pg_container: Any) -> None:  # noqa: F8
     assert normalize(result.output.decode()) == SNAPSHOT.read_text()
 
 
-def test_alembic_check_detects_drift(pg_url: str) -> None:  # noqa: F811
+def test_alembic_check_detects_drift(pg_url: str) -> None:
     """The drift check can fail: an extra column in the database is reported."""
     eng = create_engine(pg_url)
     try:
@@ -511,7 +508,7 @@ def test_alembic_check_detects_drift(pg_url: str) -> None:  # noqa: F811
 
 
 def test_downgrade_removes_everything_and_upgrade_restores(
-    pg_url: str,  # noqa: F811
+    pg_url: str,
 ) -> None:
     cfg = alembic_config(pg_url)
     eng = create_engine(pg_url)
@@ -535,7 +532,7 @@ def test_downgrade_removes_everything_and_upgrade_restores(
 
 
 def test_host_records_downgrade_restores_the_host_name_and_drops_the_index(
-    pg_url: str,  # noqa: F811
+    pg_url: str,
 ) -> None:
     """0002 down: a stored game gets ``host_display_name`` back as "Host" and
     ``ix_games_host_user_id`` is gone; up again restores head."""

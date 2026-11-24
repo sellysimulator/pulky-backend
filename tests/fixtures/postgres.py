@@ -4,7 +4,7 @@ A Testcontainers ``postgres:18`` with ``alembic upgrade head`` applied. Nothing 
 ever connects to a database named by ``settings``.
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -12,7 +12,8 @@ from typing import Any
 import pytest
 from alembic.config import Config
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE = "postgres:18"
@@ -63,6 +64,18 @@ def db_session(pg_url: str) -> Iterator[Session]:
             if quoted:
                 conn.execute(text(f"TRUNCATE TABLE {quoted} RESTART IDENTITY CASCADE"))
         engine.dispose()
+
+
+@pytest.fixture()
+def db_engine(pg_url: str) -> Iterator[Engine]:
+    engine = create_engine(pg_url)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture()
+def factory(db_engine: Engine) -> Callable[[], Session]:
+    return sessionmaker(bind=db_engine)
 
 
 def raw_insert(session: Session, table: str, **values: Any) -> int:

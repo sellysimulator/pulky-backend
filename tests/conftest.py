@@ -1,12 +1,18 @@
 """Shared test doubles for every backend suite.
 
-The environment block comes first and runs before anything imports ``app``:
+The environment block runs before anything imports ``app``:
 environment variables take precedence over the dotenv file, so the suite
 never sees a developer's real settings (spec section 13.12).
 """
 
+import asyncio
 import json
 import os
+from collections.abc import Iterator
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
 
 _SETTINGS_DEFAULTS: dict[str, str] = {
     "APP_NAME": "Pulky",
@@ -30,15 +36,14 @@ _SETTINGS_DEFAULTS: dict[str, str] = {
 }
 os.environ.update(_SETTINGS_DEFAULTS)
 
-import asyncio  # noqa: E402
-from collections.abc import Iterator  # noqa: E402
-from typing import Any  # noqa: E402
-
-import pytest  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-
-# The PostgreSQL fixtures (pg_container, pg_url, db_session) for every `dbschema` test.
-pytest_plugins = ("tests.fixtures.postgres",)
+# The shared fixtures: pytest loads each module as a plugin, so a test asks for a
+# fixture by name and imports only plain helpers.
+pytest_plugins = (
+    "tests.fixtures.postgres",
+    "tests.fixtures.sockets",
+    "tests.fixtures.play_loop",
+    "tests.fixtures.finished_games",
+)
 
 
 def contains_key(payload: object, key: str) -> bool:

@@ -1,4 +1,3 @@
-# ruff: noqa: F811
 """Black-box tests for end-of-game persistence (all against PostgreSQL).
 
 Every test passes a ``session_factory`` bound to the Testcontainers PostgreSQL of
@@ -12,15 +11,15 @@ import re
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import event, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 from app.core.config_models import GameConfig
 from app.core.defaults import DEFAULT_CONFIG
@@ -36,7 +35,9 @@ from app.services.db_service import (
 )
 from app.services.state_service import new_room_document
 from app.services.stats_service import get_or_create_user, rebuild_user_stats
-from tests.fixtures.postgres import db_session, pg_url, raw_insert  # noqa: F401
+from tests.fixtures.postgres import (
+    raw_insert,
+)
 
 pytestmark = pytest.mark.dbschema
 
@@ -205,18 +206,6 @@ def secrets_of(room: dict[str, Any]) -> list[str]:
 
 
 # ------------------------------------------------------------------- helpers
-
-
-@pytest.fixture()
-def db_engine(pg_url: str) -> Iterator[Engine]:
-    engine = create_engine(pg_url)
-    yield engine
-    engine.dispose()
-
-
-@pytest.fixture()
-def factory(db_engine: Engine) -> Callable[[], Session]:
-    return sessionmaker(bind=db_engine)
 
 
 def rows(db: Session, sql: str, **params: Any) -> list[dict[str, Any]]:

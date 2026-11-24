@@ -7,15 +7,8 @@ from app.core.enums import RoomState
 from app.services import game_service, play_service, room_service, state_service
 from app.services.room_service import Emit
 from app.sockets import manager as sockets_manager
-from app.sockets.errors import guarded
+from app.sockets.errors import error_emit, guarded, requested_room
 from app.sockets.manager import sio
-
-MSG_HOST_ONLY = "Only the host can do that."
-MSG_NOT_IN_ROOM = "You are not in this room."
-
-
-def _code(data: dict | None) -> str:
-    return str((data or {}).get("room_id") or "").strip().upper()
 
 
 def _join_error(sid: str, message: str) -> Emit:
@@ -32,7 +25,7 @@ def _identity(sid: str) -> str:
 @sio.event
 @guarded("join_error")
 async def join_waiting(sid: str, data: dict | None = None) -> None:
-    code = _code(data)
+    code = requested_room(data)
     state = state_service.get_state_service()
     sockets = sockets_manager.get_socket_manager()
     identity = _identity(sid)
@@ -46,7 +39,7 @@ async def join_waiting(sid: str, data: dict | None = None) -> None:
             room_service.check_host_secret(room, data)
             or room_service.check_host_identity(room, identity)
         ):
-            emits.append(_join_error(sid, MSG_HOST_ONLY))
+            emits.append(_join_error(sid, room_service.MSG_HOST_ONLY))
         else:
             code = room["room_code"]
             claimed = True
@@ -57,7 +50,12 @@ async def join_waiting(sid: str, data: dict | None = None) -> None:
                 room["host_identity"] = identity
             if dropped:
                 emits.append(
-                    Emit(code, "host_reconnected", {"seq": state.next_seq(room)})
+                    Emit(
+                        code,
+                        "host_reconnected",
+                        {"seq": state.next_seq(room)},
+                        to_room=True,
+                    )
                 )
             emits.append(
                 Emit(
@@ -103,7 +101,7 @@ def _drop_other_sids(room: dict, alias: str, keep_sid: str) -> None:
 @sio.event
 @guarded("join_error")
 async def join(sid: str, data: dict | None = None) -> None:
-    code = _code(data)
+    code = requested_room(data)
     state = state_service.get_state_service()
     sockets = sockets_manager.get_socket_manager()
     identity = _identity(sid)
@@ -148,6 +146,7 @@ async def join(sid: str, data: dict | None = None) -> None:
                                 "alias": alias,
                                 "display_name": participant["display_name"],
                             },
+                            to_room=True,
                         )
                     )
                 if running:
@@ -160,6 +159,7 @@ async def join(sid: str, data: dict | None = None) -> None:
                             code,
                             "lobby_update",
                             room_service.lobby_payload(room, state.next_seq(room)),
+                            to_room=True,
                         )
                     )
                 await state.save_room(code, room)
@@ -200,6 +200,7 @@ async def join(sid: str, data: dict | None = None) -> None:
                         code,
                         "lobby_update",
                         room_service.lobby_payload(room, state.next_seq(room)),
+                        to_room=True,
                     )
                 )
                 await state.save_room(code, room)
@@ -213,7 +214,7 @@ async def join(sid: str, data: dict | None = None) -> None:
 @sio.event
 @guarded("join_error")
 async def leave(sid: str, data: dict | None = None) -> None:
-    code = _code(data)
+    code = requested_room(data)
     state = state_service.get_state_service()
     sockets = sockets_manager.get_socket_manager()
     emits: list[Emit] = []
@@ -240,6 +241,7 @@ async def leave(sid: str, data: dict | None = None) -> None:
                     code,
                     "lobby_update",
                     room_service.lobby_payload(room, state.next_seq(room)),
+                    to_room=True,
                 )
             )
             await state.save_room(code, room)
@@ -248,25 +250,20 @@ async def leave(sid: str, data: dict | None = None) -> None:
     await room_service.send(emits)
 
 
-def _error(sid: str, code: str, message: str, field: str | None = None) -> Emit:
-    payload = {"code": code, "message": message}
-    if field is not None:
-        payload["field"] = field
-    return Emit(sid, "error", payload)
-
-
 @sio.event
 @guarded()
 async def config_update(sid: str, data: dict | None = None) -> None:
-    code = _code(data)
+    code = requested_room(data)
     state = state_service.get_state_service()
     emits: list[Emit] = []
     async with state.lock(code):
         room = await state.get_room(code)
         if room is None:
-            emits.append(_error(sid, "NOT_IN_ROOM", MSG_NOT_IN_ROOM))
+            emits.append(error_emit(sid, "NOT_IN_ROOM", room_service.MSG_NOT_IN_ROOM))
         elif not room_service.check_host_secret(room, data):
-            emits.append(_error(sid, "INVALID_HOST_SECRET", MSG_HOST_ONLY))
+            emits.append(
+                error_emit(sid, "INVALID_HOST_SECRET", room_service.MSG_HOST_ONLY)
+            )
         else:
             patch = (data or {}).get("config")
             try:
@@ -274,9 +271,9 @@ async def config_update(sid: str, data: dict | None = None) -> None:
                     room, patch if isinstance(patch, dict) else {}, state.next_seq
                 )
             except room_service.ConfigLocked:
-                emits = [_error(sid, "INVALID_CONFIG", MSG_CONFIG_LOCKED)]
+                emits = [error_emit(sid, "INVALID_CONFIG", MSG_CONFIG_LOCKED)]
             except ConfigError as exc:
-                emits = [_error(sid, "INVALID_CONFIG", exc.message, exc.field)]
+                emits = [error_emit(sid, "INVALID_CONFIG", exc.message, exc.field)]
             else:
                 await state.save_room(room["room_code"], room)
     await room_service.send(emits)
@@ -300,7 +297,7 @@ def _record_host_uid(room: dict, sid: str) -> None:
 @sio.event
 @guarded("join_error", echo_room_code=True)
 async def start_game(sid: str, data: dict | None = None) -> None:
-    code = _code(data)
+    code = requested_room(data)
     state = state_service.get_state_service()
     emits: list[Emit] = []
     async with state.lock(code):
@@ -308,7 +305,7 @@ async def start_game(sid: str, data: dict | None = None) -> None:
         if room is None:
             emits.append(_start_refusal(sid, code, room_service.STATUS_NOT_FOUND))
         elif not room_service.check_host_secret(room, data):
-            emits.append(_start_refusal(sid, code, MSG_HOST_ONLY))
+            emits.append(_start_refusal(sid, code, room_service.MSG_HOST_ONLY))
         elif room["state"] in (RoomState.RUNNING, RoomState.FINISHED):
             return
         else:

@@ -9,7 +9,9 @@ import pytest
 from app.services import db_service, play_service
 from app.sockets.handlers.lobby import join, join_waiting
 from app.sockets.handlers.play import request_state
-from tests.test_sockets.conftest import World
+from tests.fixtures.sockets import (
+    World,
+)
 
 aio = pytest.mark.asyncio
 

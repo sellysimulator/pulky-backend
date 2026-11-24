@@ -8,6 +8,13 @@ from app.core.enums import IncotermTier, TradeSide, Weekday
 from app.core.limits import MAX_CONSERVE_LOTS, MAX_ORDER, MAX_PEER_PRICE
 from app.core.money import format_money, format_number, round_cents
 
+
+def alias_number(alias: str) -> int:
+    """The seat number of an alias, the order players are listed in: 10 for ``P10``."""
+    digits = alias[1:]
+    return int(digits) if digits.isdigit() else 0
+
+
 # ---- decision errors (spec §4.3 "Decision messages") ----
 
 

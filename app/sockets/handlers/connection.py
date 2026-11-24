@@ -90,6 +90,7 @@ async def disconnect(sid: str) -> None:
                                 "alias": alias,
                                 "display_name": participant["display_name"],
                             },
+                            to_room=True,
                         )
                     )
                 await state.save_room(code, room)
@@ -100,6 +101,7 @@ async def disconnect(sid: str) -> None:
                         room["room_code"],
                         "host_disconnected",
                         {"seq": state.next_seq(room)},
+                        to_room=True,
                     )
                 )
                 await state.save_room(code, room)

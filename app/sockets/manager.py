@@ -18,6 +18,8 @@ sio = socketio.AsyncServer(
     logger=settings.DEBUG,
     engineio_logger=settings.DEBUG,
     max_http_buffer_size=abuse.MAX_BODY_BYTES,
+    ping_timeout=120,
+    ping_interval=25,
 )
 
 

@@ -1,4 +1,3 @@
-# ruff: noqa: F811
 """Black-box tests for the user routes (profile, stats, games played, games
 hosted)."""
 
@@ -14,16 +13,11 @@ from sqlalchemy.orm import Session
 
 from app.core.engine import PulkyEngine
 from app.services.user_service import upsert_user
-from tests.fixtures.postgres import db_session, pg_url  # noqa: F401
-from tests.test_api.test_results import (  # noqa: F401
+from tests.fixtures.finished_games import (
     NEED_SIGN_IN,
     NO_SIGN_IN,
     NOT_FOUND,
-    api,
     assert_no_secrets,
-    bare_api,
-    db_engine,
-    factory,
     guest_id,
     make_room,
     norm,

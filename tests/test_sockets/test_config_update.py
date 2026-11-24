@@ -16,7 +16,10 @@ from app.sockets.handlers.lobby import (
     leave,
     start_game,
 )
-from tests.test_sockets.conftest import World, leaf_paths
+from tests.fixtures.sockets import (
+    World,
+    leaf_paths,
+)
 
 aio = pytest.mark.asyncio
 ONLY_HOST = "Only the host can do that."

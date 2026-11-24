@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-FORBIDDEN_MESSAGE = "Only the host can do that."
 TOO_MANY_ROOMS = "Too many games are open right now. Try again in a few minutes."
 
 
@@ -31,7 +30,7 @@ async def _authorised_room(code: str, secret: str | None) -> dict:
     if room is None:
         raise HTTPException(status_code=404, detail=room_service.STATUS_NOT_FOUND)
     if not room_service.check_host_secret(room, {"host_secret": secret}):
-        raise HTTPException(status_code=403, detail=FORBIDDEN_MESSAGE)
+        raise HTTPException(status_code=403, detail=room_service.MSG_HOST_ONLY)
     return room
 
 

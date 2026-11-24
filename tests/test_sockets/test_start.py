@@ -16,7 +16,10 @@ from app.services.room_service import (
 )
 from app.sockets.handlers.connection import disconnect
 from app.sockets.handlers.lobby import start_game
-from tests.test_sockets.conftest import World, norm
+from tests.fixtures.sockets import (
+    World,
+    norm,
+)
 
 aio = pytest.mark.asyncio
 ONLY_HOST = "Only the host can do that."

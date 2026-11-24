@@ -1,4 +1,3 @@
-# ruff: noqa: F811
 """Hidden defaults (spec 9.3): anyone can open a host screen, so the risk odds'
 defaults reach no host, REST response or validation message before the game ends.
 The room keeps the host's config (null at each hidden default), the engine runs on
@@ -15,14 +14,18 @@ from app.services import game_service
 from app.services.state_service import get_state_service
 from app.sockets.handlers.host import end_game_early
 from app.sockets.handlers.lobby import config_update, start_game
-from tests.test_sockets.conftest import HOST_NAME, Game, World, all_keys
-from tests.test_sockets.test_submit import (  # noqa: F401
+from tests.fixtures.play_loop import (
     PersistSpy,
-    _never_touch_a_real_database,
-    persist,
     play_day,
 )
+from tests.fixtures.sockets import (
+    HOST_NAME,
+    Game,
+    World,
+    all_keys,
+)
 
+pytestmark = pytest.mark.usefixtures("persist")
 aio = pytest.mark.asyncio
 API = "/api/v1"
 

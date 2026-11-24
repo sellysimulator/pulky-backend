@@ -11,6 +11,7 @@ from app.core.config_models import GameConfig, config_public
 from app.core.engine import PulkyEngine
 from app.core.enums import RoomState
 from app.core.limits import ROOM_TTL_SECONDS
+from app.core.records import alias_number
 from app.services.room_service import Emit
 
 logger = logging.getLogger(__name__)
@@ -86,14 +87,9 @@ def clear_preview_engines() -> None:
     _preview_engines.clear()
 
 
-def _alias_number(alias: str) -> int:
-    digits = alias[1:]
-    return int(digits) if digits.isdigit() else 0
-
-
 def _ordered_participants(room: dict) -> list[dict]:
     return sorted(
-        room.get("participants", {}).values(), key=lambda p: _alias_number(p["alias"])
+        room.get("participants", {}).values(), key=lambda p: alias_number(p["alias"])
     )
 
 
@@ -164,8 +160,19 @@ def start(room: dict, next_seq: Callable[[dict], int]) -> list[Emit]:
     code = room["room_code"]
     host_sid = room.get("host_sid")
     emits = [
-        Emit(code, "game_started", _game_started(room, next_seq(room)), host_sid),
-        Emit(code, "day_opened", {"seq": next_seq(room), "brief": engine.brief()}),
+        Emit(
+            code,
+            "game_started",
+            _game_started(room, next_seq(room)),
+            skip_sid=host_sid,
+            to_room=True,
+        ),
+        Emit(
+            code,
+            "day_opened",
+            {"seq": next_seq(room), "brief": engine.brief()},
+            to_room=True,
+        ),
     ]
     state_seq = next_seq(room)
     for sid, alias in room["sid_to_alias"].items():

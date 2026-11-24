@@ -1,4 +1,3 @@
-# ruff: noqa: F811
 """Black-box tests for attaching guest games to an account."""
 
 from collections.abc import Callable
@@ -12,15 +11,10 @@ from sqlalchemy.orm import Session
 from app.core.engine import PulkyEngine
 from app.services.claim_service import claim_guest_results
 from app.services.stats_service import get_or_create_user
-from tests.fixtures.postgres import db_session, pg_url  # noqa: F401
-from tests.test_api.test_results import (  # noqa: F401
+from tests.fixtures.finished_games import (
     NEED_SIGN_IN,
     NO_SIGN_IN,
-    api,
     assert_no_secrets,
-    bare_api,
-    db_engine,
-    factory,
     guest_id,
     make_room,
     persist,

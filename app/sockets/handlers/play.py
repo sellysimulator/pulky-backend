@@ -4,22 +4,14 @@ from app.core.enums import RoomState
 from app.core.records import DecisionError, StaleDay
 from app.services import game_service, play_service, room_service, state_service
 from app.services.room_service import Emit
-from app.sockets.errors import guarded
+from app.sockets.errors import error_emit, guarded, requested_room
 from app.sockets.manager import sio
-
-
-def _code(data: dict | None) -> str:
-    return str((data or {}).get("room_id") or "").strip().upper()
-
-
-def _error(sid: str, code: str, message: str) -> Emit:
-    return Emit(sid, "error", {"code": code, "message": message})
 
 
 @sio.event
 @guarded()
 async def submit_day(sid: str, data: dict | None = None) -> None:
-    code = _code(data)
+    code = requested_room(data)
     state = state_service.get_state_service()
     emits: list[Emit] = []
     finished = False
@@ -27,12 +19,14 @@ async def submit_day(sid: str, data: dict | None = None) -> None:
         room = await state.get_room(code)
         alias = room["sid_to_alias"].get(sid) if room is not None else None
         if room is None or alias is None:
-            emits.append(_error(sid, "NOT_IN_ROOM", play_service.MSG_NOT_IN_ROOM))
+            emits.append(error_emit(sid, "NOT_IN_ROOM", room_service.MSG_NOT_IN_ROOM))
         elif room["state"] == RoomState.FINISHED:
-            emits.append(_error(sid, "GAME_FINISHED", play_service.MSG_GAME_FINISHED))
+            emits.append(
+                error_emit(sid, "GAME_FINISHED", play_service.MSG_GAME_FINISHED)
+            )
         elif room["state"] != RoomState.RUNNING:
             emits.append(
-                _error(sid, "GAME_NOT_RUNNING", play_service.MSG_GAME_NOT_RUNNING)
+                error_emit(sid, "GAME_NOT_RUNNING", play_service.MSG_GAME_NOT_RUNNING)
             )
         else:
             code = room["room_code"]
@@ -43,7 +37,7 @@ async def submit_day(sid: str, data: dict | None = None) -> None:
             except StaleDay as exc:
                 engine = game_service.require_engine(room)
                 emits = [
-                    _error(sid, exc.code, exc.message),
+                    error_emit(sid, exc.code, exc.message),
                     Emit(
                         sid,
                         "your_state",
@@ -54,7 +48,7 @@ async def submit_day(sid: str, data: dict | None = None) -> None:
                 ]
                 await state.save_room(code, room)
             except DecisionError as exc:
-                emits = [_error(sid, exc.code, exc.message)]
+                emits = [error_emit(sid, exc.code, exc.message)]
             else:
                 await state.save_room(code, room)
     await room_service.send(emits)
@@ -68,14 +62,14 @@ async def preview_decision(sid: str, data: dict | None = None) -> dict:
     """The decision form's figures for a draft decision (spec 12.1, 12.4), answered
     as the event's acknowledgement, to the asking player only. Read-only: no lock,
     no save and no emit."""
-    code = _code(data)
+    code = requested_room(data)
     state = state_service.get_state_service()
     room = await state.get_room(code)
     alias = room["sid_to_alias"].get(sid) if room is not None else None
     if room is None:
         game_service.forget_preview_engine(code)  # expired or deleted
     if room is None or alias is None:
-        return {"code": "NOT_IN_ROOM", "message": play_service.MSG_NOT_IN_ROOM}
+        return {"code": "NOT_IN_ROOM", "message": room_service.MSG_NOT_IN_ROOM}
     engine = game_service.preview_engine(room)  # None unless the room is running
     if engine is None:
         return {
@@ -88,13 +82,13 @@ async def preview_decision(sid: str, data: dict | None = None) -> dict:
 @sio.event
 @guarded()
 async def request_state(sid: str, data: dict | None = None) -> None:
-    code = _code(data)
+    code = requested_room(data)
     state = state_service.get_state_service()
     emits: list[Emit] = []
     async with state.lock(code):
         room = await state.get_room(code)
         if room is None:
-            emits.append(_error(sid, "NOT_IN_ROOM", play_service.MSG_NOT_IN_ROOM))
+            emits.append(error_emit(sid, "NOT_IN_ROOM", room_service.MSG_NOT_IN_ROOM))
         else:
             code = room["room_code"]
             started = room["state"] in (RoomState.RUNNING, RoomState.FINISHED)
@@ -120,7 +114,9 @@ async def request_state(sid: str, data: dict | None = None) -> None:
                     payload = room_service.lobby_payload(room, state.next_seq(room))
                     emits.append(Emit(sid, "lobby_update", payload))
             else:
-                emits.append(_error(sid, "NOT_IN_ROOM", play_service.MSG_NOT_IN_ROOM))
+                emits.append(
+                    error_emit(sid, "NOT_IN_ROOM", room_service.MSG_NOT_IN_ROOM)
+                )
             if not (emits and emits[0].event == "error"):
                 await state.save_room(code, room)
     await room_service.send(emits)

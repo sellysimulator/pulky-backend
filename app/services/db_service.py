@@ -284,7 +284,7 @@ def persist_finished_game(
         if db is not None:
             try:
                 db.rollback()
-            except Exception:  # noqa: S110  # nothing more to undo
+            except Exception:  # nothing more to undo
                 pass
         _log_failure("room %s could not be persisted", code, error)
         return None

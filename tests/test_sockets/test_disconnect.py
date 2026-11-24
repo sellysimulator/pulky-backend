@@ -6,7 +6,10 @@ import pytest
 
 from app.services import game_service
 from app.sockets.handlers.connection import disconnect
-from tests.test_sockets.conftest import World, norm
+from tests.fixtures.sockets import (
+    World,
+    norm,
+)
 
 aio = pytest.mark.asyncio
 

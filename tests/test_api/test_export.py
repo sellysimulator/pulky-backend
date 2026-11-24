@@ -1,4 +1,3 @@
-# ruff: noqa: F811
 """Black-box tests for the export route and the CSV and JSON builders."""
 
 import csv
@@ -22,14 +21,9 @@ from app.services.export_service import csv_safe, export_csv, export_json
 from app.services.results_service import iso_utc, results_response
 from app.services.state_service import reset_state_service
 from tests.conftest import contains_key
-from tests.fixtures.postgres import db_session, pg_url  # noqa: F401
-from tests.test_api.test_results import (  # noqa: F401
-    api,
+from tests.fixtures.finished_games import (
     assert_no_secrets,
-    bare_api,
-    db_engine,
     drop_live_room,
-    factory,
     guest_id,
     live_room_for,
     make_room,

@@ -6,7 +6,11 @@ from app.services import game_service
 from app.services.room_service import STATUS_NOT_FOUND
 from app.sockets.handlers.connection import disconnect
 from app.sockets.handlers.lobby import join_waiting
-from tests.test_sockets.conftest import World, guest, norm
+from tests.fixtures.sockets import (
+    World,
+    guest,
+    norm,
+)
 
 aio = pytest.mark.asyncio
 ONLY_HOST = "Only the host can do that."

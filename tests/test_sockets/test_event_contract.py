@@ -1,11 +1,10 @@
-# ruff: noqa: F811
 """Event contract for the play loop (spec 12.1-12.2).
 
 One run covers the lobby, a game played to its natural end, a second game ended
 early, the errors play can raise, a request_state, and a disconnect/reconnect.
 Every event name and every error code that appears must be one the spec lists.
 
-Persistence seam: the spy of test_submit (see its docstring).
+Persistence seam: the spy of tests/fixtures/play_loop.py (see its docstring).
 """
 
 import pytest
@@ -14,16 +13,17 @@ from app.sockets.handlers.connection import disconnect
 from app.sockets.handlers.host import end_game_early
 from app.sockets.handlers.lobby import config_update, start_game
 from app.sockets.handlers.play import request_state, submit_day
-from tests.test_sockets.conftest import World
-from tests.test_sockets.test_submit import (  # noqa: F401
+from tests.fixtures.play_loop import (
     PersistSpy,
-    _never_touch_a_real_database,
     dec,
-    persist,
     play_day,
     submit,
 )
+from tests.fixtures.sockets import (
+    World,
+)
 
+pytestmark = pytest.mark.usefixtures("persist")
 aio = pytest.mark.asyncio
 
 # spec 12.2, "Server -> client" table, verbatim

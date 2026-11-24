@@ -1,4 +1,3 @@
-# ruff: noqa: F811
 """Black-box tests for request_state (spec 12.1, 12.6)."""
 
 from typing import Any
@@ -9,17 +8,18 @@ from app.services import game_service
 from app.sockets.handlers.connection import disconnect
 from app.sockets.handlers.play import request_state
 from tests.conftest import contains_key, contains_value
-from tests.test_sockets.conftest import World, norm
-from tests.test_sockets.test_submit import (  # noqa: F401
+from tests.fixtures.play_loop import (
     MSG_NOT_IN_ROOM,
-    PersistSpy,
-    _never_touch_a_real_database,
-    persist,
     play_day,
     room_engine,
     submit,
 )
+from tests.fixtures.sockets import (
+    World,
+    norm,
+)
 
+pytestmark = pytest.mark.usefixtures("persist")
 aio = pytest.mark.asyncio
 
 

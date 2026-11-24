@@ -1,7 +1,6 @@
-# ruff: noqa: F811
 """Black-box tests for the resolution emits and finish (spec 12.3).
 
-Persistence is the spy of test_submit (see its docstring for the seam).
+Persistence is the spy of tests/fixtures/play_loop.py (see its docstring for the seam).
 """
 
 import logging
@@ -15,19 +14,23 @@ from app.services import game_service, play_service
 from app.sockets.handlers.connection import disconnect
 from app.sockets.handlers.play import submit_day
 from tests.conftest import contains_key
-from tests.test_sockets.conftest import Game, World, count_engine_builds, norm
-from tests.test_sockets.test_submit import (  # noqa: F401
+from tests.fixtures.play_loop import (
     HISTORY_KEYS,
     LockWatch,
     PersistSpy,
-    _never_touch_a_real_database,
     dec,
-    persist,
     play_day,
     room_engine,
     submit,
 )
+from tests.fixtures.sockets import (
+    Game,
+    World,
+    count_engine_builds,
+    norm,
+)
 
+pytestmark = pytest.mark.usefixtures("persist")
 aio = pytest.mark.asyncio
 STAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 SHORT = {"duration_days": 7, "futures": {"horizon_days": 3}}

@@ -1,4 +1,3 @@
-# ruff: noqa: F811
 """Black-box tests for end_game_early (spec 4.5, 11.3)."""
 
 import re
@@ -8,18 +7,21 @@ import pytest
 
 from app.sockets.handlers.host import end_game_early
 from tests.conftest import contains_key
-from tests.test_sockets.conftest import Game, World, norm
-from tests.test_sockets.test_submit import (  # noqa: F401
+from tests.fixtures.play_loop import (
     HISTORY_KEYS,
     MSG_NOT_RUNNING,
     PersistSpy,
-    _never_touch_a_real_database,
-    persist,
     play_day,
     room_engine,
     submit,
 )
+from tests.fixtures.sockets import (
+    Game,
+    World,
+    norm,
+)
 
+pytestmark = pytest.mark.usefixtures("persist")
 aio = pytest.mark.asyncio
 MSG_ONLY_HOST = "Only the host can do that."
 STAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
