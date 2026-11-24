@@ -13,7 +13,7 @@ from app.core.defaults import PLAYER_CONFIG_KEYS
 from app.sockets.handlers.connection import disconnect
 from app.sockets.handlers.lobby import config_update, join, join_waiting, start_game
 from tests.conftest import contains_key, contains_value
-from tests.test_sockets.conftest import (
+from tests.fixtures.sockets import (
     SECRET_KEY_NAMES,
     SECRET_PATCH,
     SECRET_VALUES,

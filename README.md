@@ -75,7 +75,7 @@ venv/bin/python -m app.tools.balance --seeds 1000 --players 4 [--strategy NAME .
 | `app/models/`, `app/db/`, `app/schemas/` | SQLAlchemy models, engine and sessions; the REST response models. |
 | `app/sockets/` | `manager.py` (the server, plus the Redis manager when Redis is on), `errors.py` (`@guarded`) and `handlers/` (`connection`, `lobby`, `play`, `host`), auto-discovered. |
 | `app/tools/balance.py` | The balance harness CLI. |
-| `tests/` | One folder per area (`test_core`, `test_services`, `test_sockets`, `test_api`, `test_models`, `test_deploy`, `test_skeleton`, `test_tools`); shared doubles in `conftest.py`, data in `fixtures/`. |
+| `tests/` | One folder per area (`test_core`, `test_services`, `test_sockets`, `test_api`, `test_models`, `test_deploy`, `test_skeleton`, `test_tools`); shared doubles in `conftest.py`, shared fixtures and data in `fixtures/`. |
 
 ## REST (`/api/v1`)
 

@@ -13,7 +13,9 @@ import pytest
 from app.sockets.handlers.connection import connect, disconnect
 from app.sockets.handlers.lobby import join_waiting, start_game
 from tests.conftest import contains_key, contains_value
-from tests.test_sockets.conftest import World
+from tests.fixtures.sockets import (
+    World,
+)
 
 pytestmark = pytest.mark.asyncio
 

@@ -1,4 +1,3 @@
-# ruff: noqa: F811
 """Behaviour of the models and the migrated schema (spec 13.5)."""
 
 import re
@@ -12,7 +11,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from tests.fixtures.postgres import db_session, pg_url, raw_insert  # noqa: F401
+from tests.fixtures.postgres import (
+    raw_insert,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -42,7 +43,7 @@ def count(session: Session, table: str, where: str = "1=1") -> int:
 @pytest.mark.dbschema
 def test_a_missing_not_null_value_is_rejected(
     db_session: Session,
-) -> None:  # noqa: F811
+) -> None:
     """PostgreSQL never fills a NOT NULL column without a default: the raw INSERTs
     below prove the timestamps' server defaults, not a lenient database."""
     with pytest.raises(IntegrityError):
@@ -54,7 +55,7 @@ def test_a_missing_not_null_value_is_rejected(
 
 @pytest.mark.dbschema
 def test_the_app_connect_args_set_the_session_time_zone_to_utc(
-    pg_url: str,  # noqa: F811
+    pg_url: str,
 ) -> None:
     """``db_connect_args`` sets ``TimeZone`` to exactly ``UTC`` (the image's own
     default is ``Etc/UTC``), and a stored instant reads back aware, in UTC."""
@@ -81,7 +82,7 @@ def test_the_app_connect_args_set_the_session_time_zone_to_utc(
 
 @pytest.mark.dbschema
 def test_raw_insert_without_timestamps_succeeds_and_fills_both(
-    db_session: Session,  # noqa: F811
+    db_session: Session,
 ) -> None:
     """Without a server_default this NOT NULL insert would fail."""
     db_session.execute(GAME_INSERT)
@@ -97,7 +98,7 @@ def test_raw_insert_without_timestamps_succeeds_and_fills_both(
     ["users", "game_configs", "participants", "player_days", "market_days"],
 )
 def test_every_table_accepts_a_raw_insert_without_timestamps(
-    db_session: Session,  # noqa: F811
+    db_session: Session,
     table: str,
 ) -> None:
     gid = make_game(db_session)
@@ -120,7 +121,7 @@ def test_every_table_accepts_a_raw_insert_without_timestamps(
 
 @pytest.mark.dbschema
 def test_user_stats_raw_insert_without_timestamps(
-    db_session: Session,  # noqa: F811
+    db_session: Session,
 ) -> None:
     uid = insert_row(db_session, "users", firebase_uid="uid-s", display_name="Su")
     insert_row(db_session, "user_stats", user_id=uid)
@@ -183,7 +184,7 @@ def test_public_surface_table_names() -> None:
 @pytest.mark.dbschema
 def test_same_room_code_and_start_under_two_ids_are_both_stored(
     db_session: Session,
-) -> None:  # noqa: F811
+) -> None:
     """A game is keyed by its public_id alone; a reissued room code,
     even at the same start, is another game."""
     db_session.execute(GAME_INSERT)
@@ -201,7 +202,7 @@ def test_same_room_code_and_start_under_two_ids_are_both_stored(
 
 @pytest.mark.dbschema
 def test_same_room_code_at_another_start_is_allowed(
-    db_session: Session,  # noqa: F811
+    db_session: Session,
 ) -> None:
     make_game(db_session, started_at=datetime(2026, 10, 12, 14, tzinfo=UTC))
     make_game(
@@ -213,14 +214,14 @@ def test_same_room_code_at_another_start_is_allowed(
 
 
 @pytest.mark.dbschema
-def test_duplicate_public_id_is_rejected(db_session: Session) -> None:  # noqa: F811
+def test_duplicate_public_id_is_rejected(db_session: Session) -> None:
     make_game(db_session, "AAA222")
     with pytest.raises(IntegrityError):
         make_game(db_session, "BBB333", public_id=(("aaa222" * 6)[:32]))
 
 
 @pytest.mark.dbschema
-def test_duplicate_firebase_uid_is_rejected(db_session: Session) -> None:  # noqa: F811
+def test_duplicate_firebase_uid_is_rejected(db_session: Session) -> None:
     insert_row(db_session, "users", firebase_uid="same", display_name="A")
     with pytest.raises(IntegrityError):
         insert_row(db_session, "users", firebase_uid="same", display_name="B")
@@ -228,7 +229,7 @@ def test_duplicate_firebase_uid_is_rejected(db_session: Session) -> None:  # noq
 
 @pytest.mark.dbschema
 def test_duplicate_config_participant_player_day_market_day_rejected(
-    db_session: Session,  # noqa: F811
+    db_session: Session,
 ) -> None:
     gid = make_game(db_session)
     cases = [
@@ -246,7 +247,7 @@ def test_duplicate_config_participant_player_day_market_day_rejected(
 
 
 @pytest.mark.dbschema
-def test_distinct_keys_do_not_collide(db_session: Session) -> None:  # noqa: F811
+def test_distinct_keys_do_not_collide(db_session: Session) -> None:
     gid = make_game(db_session)
     for alias, day in [("P1", 1), ("P1", 2), ("P2", 1)]:
         insert_row(db_session, "player_days", game_id=gid, alias=alias, day=day)
@@ -257,7 +258,7 @@ def test_distinct_keys_do_not_collide(db_session: Session) -> None:  # noqa: F81
 
 
 @pytest.mark.dbschema
-def test_deleting_a_game_cascades(db_session: Session) -> None:  # noqa: F811
+def test_deleting_a_game_cascades(db_session: Session) -> None:
     gid = make_game(db_session)
     other = make_game(db_session, "ZZZ999")
     for table, values in [
@@ -276,7 +277,7 @@ def test_deleting_a_game_cascades(db_session: Session) -> None:  # noqa: F811
 
 
 @pytest.mark.dbschema
-def test_deleting_a_user_nulls_references(db_session: Session) -> None:  # noqa: F811
+def test_deleting_a_user_nulls_references(db_session: Session) -> None:
     uid = insert_row(db_session, "users", firebase_uid="u1", display_name="Ana")
     gid = make_game(db_session, host_user_id=uid)
     insert_row(db_session, "participants", game_id=gid, alias="P1", user_id=uid)
@@ -292,7 +293,7 @@ def test_deleting_a_user_nulls_references(db_session: Session) -> None:  # noqa:
 
 
 @pytest.mark.dbschema
-def test_money_through_the_orm(db_session: Session) -> None:  # noqa: F811
+def test_money_through_the_orm(db_session: Session) -> None:
     from app.models.game import UserStats
 
     uid = insert_row(db_session, "users", firebase_uid="u-m", display_name="Mo")
@@ -320,7 +321,7 @@ def test_money_through_the_orm(db_session: Session) -> None:  # noqa: F811
 @pytest.mark.dbschema
 def test_two_decimal_floats_read_back_exactly(
     db_session: Session,
-) -> None:  # noqa: F811
+) -> None:
     """Money and DOUBLE PRECISION ratios bound as plain floats read back bit for
     bit, and a BOOLEAN reads back as a bool."""
     from app.models.game import Game, Participant
@@ -394,7 +395,7 @@ def test_two_decimal_floats_read_back_exactly(
 
 @pytest.mark.dbschema
 def test_no_trade_day_rows_insert_with_sql_nulls(
-    db_session: Session,  # noqa: F811
+    db_session: Session,
 ) -> None:
     """NULL peer_avg_price / peer_buy / peer_sell must be accepted."""
     gid = make_game(db_session)
@@ -418,7 +419,7 @@ def test_no_trade_day_rows_insert_with_sql_nulls(
 
 
 @pytest.mark.dbschema
-def test_json_columns_round_trip(db_session: Session) -> None:  # noqa: F811
+def test_json_columns_round_trip(db_session: Session) -> None:
     import json
 
     gid = make_game(db_session)

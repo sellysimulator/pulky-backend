@@ -26,7 +26,7 @@ app/services/           state_backend.py and the services built on it
 app/sockets/            manager.py (server + SocketManager), errors.py (@guarded), handlers/
 app/tools/balance.py    the balance harness (spec 13.14)
 alembic/, db/           migrations; db/schema.postgres.sql is the reviewed DDL snapshot
-tests/                  conftest.py holds the shared test doubles
+tests/                  conftest.py holds the shared test doubles, fixtures/ the shared fixtures
 ```
 
 ## Commands
@@ -102,6 +102,8 @@ message at startup and every signed-in user is rejected.
   `require_engine`) and passes it to every payload builder (`player_state`, `host_state`,
   `play_service.resolution_emits`); a builder never loads it again (spec 13.2).
 - Handlers that can fail are wrapped in `@guarded()`; errors never carry exception text.
+- `room_service.Emit` names a sid unless `to_room=True` says its target is a room code. A
+  handler reads its room with `errors.requested_room` and refuses with `errors.error_emit`.
 - REST errors are `HTTPException` with a string `detail`; never return `str(e)`.
 - Never log secrets, tokens, identities or payloads.
 - Abuse limits (spec `00-security.md` §0.6) are constants in `app/core/abuse.py`, enforced at three
@@ -213,7 +215,11 @@ message at startup and every signed-in user is rejected.
 
 - Tests live in `tests/test_<area>/test_<behaviour>.py`. The shared doubles (`fake_redis`,
   `memory_backend`, `firebase_tokens`, `fake_socket_manager`, `client`, `lifespan_client`)
-  are in `tests/conftest.py`, and test data in `tests/fixtures/`.
+  are in `tests/conftest.py`. The other shared fixtures are plugin modules of
+  `tests/fixtures/` (`postgres`, `sockets`, `play_loop`, `finished_games`), listed in
+  `pytest_plugins` there: a test asks for a fixture by name and imports only plain helpers,
+  so no fixture import and no `noqa` for one. Test data is in `tests/fixtures/` too. A module
+  whose games finish carries `pytest.mark.usefixtures("persist")`.
 - Every `async def test_*` carries `@pytest.mark.asyncio` (strict mode). Property tests use
   Hypothesis, randomised tests fix their seeds, and no test depends on wall-clock time.
 - Database tests carry `@pytest.mark.dbschema` and use the PostgreSQL fixtures of

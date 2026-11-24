@@ -10,7 +10,9 @@ import pytest
 from app.core import abuse
 from app.services.room_service import STATUS_NOT_FOUND
 from app.sockets.handlers.lobby import join_waiting, start_game
-from tests.test_sockets.conftest import World
+from tests.fixtures.sockets import (
+    World,
+)
 
 pytestmark = pytest.mark.asyncio
 

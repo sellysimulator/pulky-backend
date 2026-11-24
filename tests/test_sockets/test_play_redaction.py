@@ -1,4 +1,3 @@
-# ruff: noqa: F811
 """Black-box redaction tests for the play loop (spec 11.1).
 
 One day of real peer trades is played with explicit
@@ -7,7 +6,7 @@ $23.17, and buys one unit from P2 at $17.43 and one from P3 at $18.91; P4 sits
 the day out. The two prices are the only way the test can tell a leaked trade
 from public data, so no default (price, capacity, quality) is assumed.
 
-Persistence seam: the spy of test_submit (see its docstring).
+Persistence seam: the spy of tests/fixtures/play_loop.py (see its docstring).
 """
 
 from collections.abc import Iterable
@@ -17,16 +16,19 @@ import pytest
 
 from app.sockets.handlers.play import request_state
 from tests.conftest import contains_key, contains_value
-from tests.test_sockets.conftest import Game, World, all_keys, leaf_paths
-from tests.test_sockets.test_submit import (  # noqa: F401
-    PersistSpy,
-    _never_touch_a_real_database,
+from tests.fixtures.play_loop import (
     collect_values,
-    persist,
     play_day,
     submit,
 )
+from tests.fixtures.sockets import (
+    Game,
+    World,
+    all_keys,
+    leaf_paths,
+)
 
+pytestmark = pytest.mark.usefixtures("persist")
 aio = pytest.mark.asyncio
 
 BUY_CAP = 23.17

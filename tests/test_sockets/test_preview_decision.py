@@ -1,4 +1,3 @@
-# ruff: noqa: F811
 """``preview_decision`` (spec 12.1, 12.4): the decision form's figures for a draft,
 answered as the event's acknowledgement to the asking player only. Read-only: no
 emit, no save, no seq."""
@@ -11,17 +10,19 @@ from app.services import game_service
 from app.services.state_service import get_state_service
 from app.sockets.handlers.host import end_game_early
 from app.sockets.handlers.play import preview_decision
-from tests.test_sockets.conftest import World, count_engine_builds
-from tests.test_sockets.test_submit import (  # noqa: F401
+from tests.fixtures.play_loop import (
     PersistSpy,
-    _never_touch_a_real_database,
     dec,
-    persist,
     play_day,
     room_engine,
     submit,
 )
+from tests.fixtures.sockets import (
+    World,
+    count_engine_builds,
+)
 
+pytestmark = pytest.mark.usefixtures("persist")
 aio = pytest.mark.asyncio
 MSG_NOT_IN_ROOM = "You are not in this room."
 MSG_NOT_RUNNING = "The game is not running."
@@ -169,7 +170,7 @@ async def test_a_game_ended_early_drops_its_cached_engine(world: World) -> None:
 
 @aio
 async def test_a_game_played_to_its_last_day_drops_its_cached_engine(
-    world: World, persist: PersistSpy  # noqa: F811
+    world: World, persist: PersistSpy
 ) -> None:
     game = await world.running_game(
         {"duration_days": 7, "futures": {"horizon_days": 3}}

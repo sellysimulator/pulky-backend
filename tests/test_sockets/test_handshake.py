@@ -5,7 +5,10 @@ import uuid
 import pytest
 
 from app.sockets.handlers.connection import GUEST_RE, connect
-from tests.test_sockets.conftest import World, guest
+from tests.fixtures.sockets import (
+    World,
+    guest,
+)
 
 aio = pytest.mark.asyncio
 

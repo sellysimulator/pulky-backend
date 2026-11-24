@@ -16,7 +16,10 @@ from app.sockets.handlers.connection import (
 )
 from app.sockets.handlers.lobby import join
 from app.sockets.handlers.play import preview_decision, request_state
-from tests.test_sockets.conftest import World, guest
+from tests.fixtures.sockets import (
+    World,
+    guest,
+)
 
 aio = pytest.mark.asyncio
 

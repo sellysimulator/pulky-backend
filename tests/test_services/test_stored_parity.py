@@ -1,4 +1,3 @@
-# ruff: noqa: F811
 """Live/stored parity (spec 13.12): ``build_stats`` over a
 stored game equals ``engine.standings()`` exactly, peer stats and series included.
 """
@@ -10,10 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.engine import PulkyEngine
 from app.core.stats import build_stats
-from tests.fixtures.postgres import db_session, pg_url  # noqa: F401
 from tests.test_services.test_persistence import (
-    db_engine,  # noqa: F401
-    factory,  # noqa: F401
     make_room,
     persist,
     play_big_game,

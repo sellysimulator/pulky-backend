@@ -16,7 +16,10 @@ from app.services.room_service import (
 )
 from app.sockets.handlers.connection import disconnect
 from app.sockets.handlers.lobby import config_update, join
-from tests.test_sockets.conftest import World, norm
+from tests.fixtures.sockets import (
+    World,
+    norm,
+)
 
 aio = pytest.mark.asyncio
 TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
