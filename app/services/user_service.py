@@ -78,7 +78,9 @@ def find_user(db: Session, uid: str) -> User | None:
 def ensure_user(db: Session, claims: dict, uid: str) -> User:
     """The caller's row, created from the token when missing."""
     user = stats_service.get_or_create_user(
-        db, uid, sanitise_display_name(_claim_name(claims), "Player")
+        db,
+        uid,
+        sanitise_display_name(_claim_name(claims), stats_service.DEFAULT_DISPLAY_NAME),
     )
     changed = False
     email = _claim_text(claims, "email")
@@ -101,7 +103,9 @@ def upsert_user(db: Session, claims: dict, display_name: str | None) -> User:
         raise ValueError("token carries no uid")
     user = stats_service.get_or_create_user(db, uid)
     raw: Any = display_name if display_name is not None else _claim_name(claims)
-    user.display_name = sanitise_display_name(raw, user.display_name or "Player")
+    user.display_name = sanitise_display_name(
+        raw, user.display_name or stats_service.DEFAULT_DISPLAY_NAME
+    )
     user.email = _claim_text(claims, "email")
     user.photo_url = _claim_text(claims, "picture")
     if user.email is not None:
@@ -110,10 +114,6 @@ def upsert_user(db: Session, claims: dict, display_name: str | None) -> User:
         user.photo_url = user.photo_url[:1024]
     db.commit()
     return user
-
-
-def _optional_float(value: object) -> float | None:
-    return None if value is None else float(value)  # type: ignore[arg-type]
 
 
 def user_stats(db: Session, user: User | None) -> dict:
@@ -134,10 +134,10 @@ def user_stats(db: Session, user: User | None) -> dict:
         "games_played": int(row["games_played"]),
         "wins": int(row["wins"]),
         "total_profit": float(row["total_profit"]),
-        "best_profit": _optional_float(row["best_profit"]),
-        "avg_fill_rate": _optional_float(row["avg_fill_rate"]),
-        "avg_waste_rate": _optional_float(row["avg_waste_rate"]),
-        "avg_market_share": _optional_float(row["avg_market_share"]),
+        "best_profit": stats_service.optional_float(row["best_profit"]),
+        "avg_fill_rate": stats_service.optional_float(row["avg_fill_rate"]),
+        "avg_waste_rate": stats_service.optional_float(row["avg_waste_rate"]),
+        "avg_market_share": stats_service.optional_float(row["avg_market_share"]),
     }
 
 

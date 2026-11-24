@@ -21,8 +21,6 @@ from app.services import db_service, results_service, user_service
 
 router = APIRouter()
 
-NOT_FOUND = "Results not found."
-
 
 def _uid(claims: dict[str, Any]) -> str:
     uid = user_service.firebase_uid(claims)
@@ -95,6 +93,6 @@ def my_game(
     alias = user_service.alias_in_game(db, user, public_id)
     game = db_service.find_game_by_public_id(db, public_id) if alias else None
     if alias is None or game is None:
-        raise HTTPException(status_code=404, detail=NOT_FOUND)
+        raise HTTPException(status_code=404, detail=results_service.MSG_NOT_FOUND)
     stored = db_service.load_stored_game(db, game.id)
     return {**results_service.results_response(stored), "my_alias": alias}

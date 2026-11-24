@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.core import abuse
+from app.services.room_service import Emit
 from app.sockets.manager import get_socket_manager
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ Handler = Callable[..., Awaitable[Any]]
 def _names_another_room(sid: str, data: dict | None) -> bool:
     """True when the event names a room this socket holds no seat in and does not
     host: the event is then also a room lookup (abuse limits, spec 0.6)."""
-    named = str((data or {}).get("room_id") or "").strip().upper()
+    named = requested_room(data)
     sockets = get_socket_manager()
     seat = sockets.sid_to_alias.get(sid)
     return named not in (sockets.sid_to_host_room.get(sid), seat[0] if seat else None)
@@ -27,6 +28,14 @@ def _names_another_room(sid: str, data: dict | None) -> bool:
 def requested_room(data: dict | None) -> str:
     """The room code an event names (``room_id``), as the handlers read it."""
     return str((data or {}).get("room_id") or "").strip().upper()
+
+
+def error_emit(sid: str, code: str, message: str, field: str | None = None) -> Emit:
+    """The ``error`` event (spec 12.2) to the sid whose request was refused."""
+    payload = {"code": code, "message": message}
+    if field is not None:
+        payload["field"] = field
+    return Emit(sid, "error", payload)
 
 
 async def _emit_error(

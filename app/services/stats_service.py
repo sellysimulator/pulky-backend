@@ -43,7 +43,7 @@ def _aggregate(ids: list[int]) -> Select[Any]:
     )
 
 
-def _optional_float(value: object) -> float | None:
+def optional_float(value: object) -> float | None:
     return None if value is None else float(value)  # type: ignore[arg-type]
 
 
@@ -60,9 +60,9 @@ def rebuild_user_stats(db: Session, user_ids: Iterable[int]) -> None:
             "wins": int(row["wins"]),
             "total_profit": float(row["total_profit"]),
             "best_profit": float(row["best_profit"]),
-            "avg_fill_rate": _optional_float(row["avg_fill_rate"]),
-            "avg_waste_rate": _optional_float(row["avg_waste_rate"]),
-            "avg_market_share": _optional_float(row["avg_market_share"]),
+            "avg_fill_rate": optional_float(row["avg_fill_rate"]),
+            "avg_waste_rate": optional_float(row["avg_waste_rate"]),
+            "avg_market_share": optional_float(row["avg_market_share"]),
         }
         for row in rows
     ]

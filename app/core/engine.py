@@ -35,6 +35,7 @@ from app.core.records import (
     PublicPlayerDay,
     Shipment,
     StaleDay,
+    alias_number,
     decision_field_issues,
     msg_offer_units_bounds,
     msg_peer_price_bounds,
@@ -62,10 +63,6 @@ _WEEKDAY_NAMES = {
 
 
 _RECORD_FIELDS: tuple[str, ...] = tuple(DayRecord.__dataclass_fields__)
-
-
-def _alias_number(alias: str) -> int:
-    return int(alias[1:])
 
 
 def offer_lots(lots: Iterable[Lot], max_quality: int) -> list[Lot]:
@@ -152,7 +149,7 @@ class PulkyEngine:
     ) -> None:
         self._config = config
         self._seed = seed
-        self._names = {a: seats[a] for a in sorted(seats, key=_alias_number)}
+        self._names = {a: seats[a] for a in sorted(seats, key=alias_number)}
         self._players = {a: players[a] for a in self._names}
         self._day = day
         self._phase = phase
@@ -193,7 +190,7 @@ class PulkyEngine:
         sup = config.supplier
         lead = sup.lead_time_days
         players: dict[str, _Player] = {}
-        for alias in sorted(seats, key=_alias_number):
+        for alias in sorted(seats, key=alias_number):
             lots = []
             if config.stock.initial_stock > 0:
                 lots.append(

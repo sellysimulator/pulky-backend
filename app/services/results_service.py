@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from app.core.stats import build_stats
 from app.services.db_service import StoredGame
 
+MSG_NOT_FOUND = "Results not found."
 _TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 

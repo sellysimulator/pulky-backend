@@ -547,8 +547,14 @@ async def test_send_routes_sid_and_room_emits(
 ) -> None:
     emits = [
         Emit(HOST_SID, "config_updated", {"seq": 1, "config": {"a": 1}}),
-        Emit(CODE, "config_updated", {"seq": 1, "config": {}}, skip_sid=HOST_SID),
-        Emit(CODE, "lobby_update", {"seq": 2}),
+        Emit(
+            CODE,
+            "config_updated",
+            {"seq": 1, "config": {}},
+            skip_sid=HOST_SID,
+            to_room=True,
+        ),
+        Emit(CODE, "lobby_update", {"seq": 2}, to_room=True),
     ]
     await send(emits)
     assert fake_socket_manager.records == [

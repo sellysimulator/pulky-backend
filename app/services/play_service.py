@@ -15,8 +15,6 @@ from app.services.room_service import Emit, send
 
 logger = logging.getLogger(__name__)
 
-MSG_NOT_IN_ROOM = "You are not in this room."
-MSG_HOST_ONLY = "Only the host can do that."
 MSG_GAME_NOT_RUNNING = "The game is not running."
 MSG_GAME_FINISHED = "The game is over."
 
@@ -91,6 +89,7 @@ def apply_submission(
                 "alias": alias,
                 "awaiting": engine.awaiting(),
             },
+            to_room=True,
         )
     ]
     if engine.all_in():
@@ -147,6 +146,7 @@ def resolution_emits(
                 "day": outcome.day,
                 "public": engine.public_results(outcome.day),
             },
+            to_room=True,
         )
     ]
     record_seq = next_seq(room)
@@ -168,12 +168,18 @@ def resolution_emits(
                 code,
                 "game_finished",
                 _game_finished(room, engine.results(), next_seq(room)),
+                to_room=True,
             )
         )
         logger.info("room %s finished", code)
     else:
         emits.append(
-            Emit(code, "day_opened", {"seq": next_seq(room), "brief": engine.brief()})
+            Emit(
+                code,
+                "day_opened",
+                {"seq": next_seq(room), "brief": engine.brief()},
+                to_room=True,
+            )
         )
     return emits
 
@@ -191,6 +197,7 @@ def end_early(room: dict, next_seq: Callable[[dict], int]) -> list[Emit]:
             room["room_code"],
             "game_finished",
             _game_finished(room, engine.results(), next_seq(room)),
+            to_room=True,
         )
     )
     logger.info("room %s finished", room["room_code"])
@@ -275,7 +282,12 @@ async def _persist(room_code: str) -> list[Emit] | None:
             seq = state.next_seq(room)
             await state.save_room(room["room_code"], room)
         return [
-            Emit(room["room_code"], "game_persisted", {"seq": seq, "game_id": game_id})
+            Emit(
+                room["room_code"],
+                "game_persisted",
+                {"seq": seq, "game_id": game_id},
+                to_room=True,
+            )
         ]
     except Exception:
         logger.exception("room %s could not be persisted", room_code)

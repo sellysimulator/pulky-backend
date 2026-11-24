@@ -22,13 +22,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-NOT_FOUND = "Results not found."
 NOT_A_GUEST = "That is not a guest id."
 
 
 def _stored(db: Session, game: Game | None) -> db_service.StoredGame:
     if game is None:
-        raise HTTPException(status_code=404, detail=NOT_FOUND)
+        raise HTTPException(status_code=404, detail=results_service.MSG_NOT_FOUND)
     return db_service.load_stored_game(db, game.id)
 
 
