@@ -194,14 +194,14 @@ async def test_the_success_announcement_is_sent_once_the_game_left_flight(
     game = await world.running_game()
     await world.finish_early(game.code)
     in_flight: list[bool] = []
-    real_send = play_service.send
+    real_emit = world.sm.emit_to_room
 
-    async def watching(emits: Any) -> None:
-        if any(e.event == "game_persisted" for e in emits):
+    async def watching(room_code: str, event: str, *args: Any, **kwargs: Any) -> None:
+        if event == "game_persisted":
             in_flight.append(game.code in play_service._persisting)
-        await real_send(emits)
+        await real_emit(room_code, event, *args, **kwargs)
 
-    monkeypatch.setattr(play_service, "send", watching)
+    monkeypatch.setattr(world.sm, "emit_to_room", watching)
     await play_service.finish(game.code)  # fails
     await settle()  # the first retry stores it and announces it
     assert store.stored and in_flight == [False]

@@ -10,8 +10,8 @@ from datetime import UTC, datetime
 from app.core.engine import DayOutcome, PulkyEngine
 from app.core.enums import RoomState
 from app.core.records import parse_decision
-from app.services import db_service, game_service, state_service
-from app.services.room_service import Emit, send
+from app.services import db_service, game_service, room_turn, state_service
+from app.services.room_service import Emit
 
 logger = logging.getLogger(__name__)
 
@@ -225,8 +225,8 @@ async def finish(room_code: str) -> None:
     _persisting.add(room_code)
     retrying = False
     try:
-        emits = await _persist(room_code)
-        if emits is None and PERSIST_RETRY_DELAYS:
+        stored = await _persist(room_code)
+        if not stored and PERSIST_RETRY_DELAYS:
             task = asyncio.create_task(_retry_persist(room_code))
             _retries.add(task)
             task.add_done_callback(_retries.discard)
@@ -234,33 +234,32 @@ async def finish(room_code: str) -> None:
     finally:
         if not retrying:
             _persisting.discard(room_code)
-    if emits:
-        await send(emits)
+    await room_turn.flush(room_code)
 
 
 async def _retry_persist(room_code: str) -> None:
-    emits: list[Emit] | None = None
+    stored = False
     try:
         for delay in PERSIST_RETRY_DELAYS:
             await asyncio.sleep(delay)
-            emits = await _persist(room_code)
-            if emits is not None:
+            stored = await _persist(room_code)
+            if stored:
                 break
     finally:
         _persisting.discard(room_code)
-    if emits is None:
+    if not stored:
         logger.error(
             "room %s could not be persisted after %d retries",
             room_code,
             len(PERSIST_RETRY_DELAYS),
         )
-    elif emits:
-        await send(emits)
+    await room_turn.flush(room_code)
 
 
-async def _persist(room_code: str) -> list[Emit] | None:
-    """One write. ``None`` when it failed and is worth trying again; otherwise the
-    announcement to send (empty when there was nothing to store)."""
+async def _persist(room_code: str) -> bool:
+    """One write. False when it failed and is worth trying again; otherwise the
+    announcement is queued for the caller to flush (there is none when there was
+    nothing to store)."""
     state = state_service.get_state_service()
     try:
         async with state.lock(room_code):
@@ -270,28 +269,28 @@ async def _persist(room_code: str) -> list[Emit] | None:
             or snapshot.get("persisted")
             or snapshot.get("state") != RoomState.FINISHED
         ):
-            return []
+            return True
         game_id = await asyncio.to_thread(db_service.persist_finished_game, snapshot)
         if game_id is None:
-            return None
+            return False
         async with state.lock(room_code):
             room = await state.get_room(room_code)
             if room is None:
-                return []
+                return True
             room["persisted"] = True
             seq = state.next_seq(room)
             await state.save_room(room["room_code"], room)
-        return [
-            Emit(
+            announcement = Emit(
                 room["room_code"],
                 "game_persisted",
                 {"seq": seq, "game_id": game_id},
                 to_room=True,
             )
-        ]
+            room_turn.queue(room_code, [announcement])
+        return True
     except Exception:
         logger.exception("room %s could not be persisted", room_code)
-        return None
+        return False
 
 
 def needs_persist(room: dict | None) -> bool:

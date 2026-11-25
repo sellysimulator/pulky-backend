@@ -6,6 +6,7 @@ from app.core.config_models import MSG_CONFIG_LOCKED, ConfigError
 from app.core.enums import RoomState
 from app.services import game_service, play_service, room_service, state_service
 from app.services.room_service import Emit
+from app.services.room_turn import room_turn
 from app.sockets import manager as sockets_manager
 from app.sockets.errors import error_emit, guarded, requested_room
 from app.sockets.manager import sio
@@ -29,9 +30,8 @@ async def join_waiting(sid: str, data: dict | None = None) -> None:
     state = state_service.get_state_service()
     sockets = sockets_manager.get_socket_manager()
     identity = _identity(sid)
-    emits: list[Emit] = []
     claimed = False
-    async with state.lock(code):
+    async with room_turn(code) as emits:
         room = await state.get_room(code)
         if room is None:
             emits.append(_join_error(sid, room_service.STATUS_NOT_FOUND))
@@ -83,9 +83,7 @@ async def join_waiting(sid: str, data: dict | None = None) -> None:
             await state.save_room(code, room)
             if old_sid and old_sid != sid:
                 sockets.sid_to_host_room.pop(old_sid, None)
-    if claimed:
-        await sockets.enter_room(sid, code)
-    await room_service.send(emits)
+            await sockets.enter_room(sid, code)
     if claimed and play_service.needs_persist(room):
         await play_service.finish(code)  # its write failed earlier (spec 13.5)
 
@@ -106,9 +104,8 @@ async def join(sid: str, data: dict | None = None) -> None:
     sockets = sockets_manager.get_socket_manager()
     identity = _identity(sid)
     session_token = (data or {}).get("session_token")
-    emits: list[Emit] = []
     seated: str | None = None
-    async with state.lock(code):
+    async with room_turn(code) as emits:
         room = await state.get_room(code)
         if room is None:
             emits.append(_join_error(sid, room_service.STATUS_NOT_FOUND))
@@ -204,9 +201,8 @@ async def join(sid: str, data: dict | None = None) -> None:
                     )
                 )
                 await state.save_room(code, room)
-    if seated is not None:
-        await sockets.join_room(sid, code, seated)
-    await room_service.send(emits)
+        if seated is not None:
+            await sockets.join_room(sid, code, seated)
     if seated is not None and play_service.needs_persist(room):
         await play_service.finish(code)  # its write failed earlier (spec 13.5)
 
@@ -217,9 +213,7 @@ async def leave(sid: str, data: dict | None = None) -> None:
     code = requested_room(data)
     state = state_service.get_state_service()
     sockets = sockets_manager.get_socket_manager()
-    emits: list[Emit] = []
-    left = False
-    async with state.lock(code):
+    async with room_turn(code) as emits:
         room = await state.get_room(code)
         alias = room["sid_to_alias"].get(sid) if room is not None else None
         if room is None or alias is None:
@@ -234,7 +228,6 @@ async def leave(sid: str, data: dict | None = None) -> None:
             for other in [s for s, a in room["sid_to_alias"].items() if a == alias]:
                 del room["sid_to_alias"][other]
                 sockets.sid_to_alias.pop(other, None)
-            left = True
             emits.append(Emit(sid, "leave_ack", {"room_id": code}))
             emits.append(
                 Emit(
@@ -245,9 +238,7 @@ async def leave(sid: str, data: dict | None = None) -> None:
                 )
             )
             await state.save_room(code, room)
-    if left:
-        await sockets.leave_room(sid, code)
-    await room_service.send(emits)
+            await sockets.leave_room(sid, code)
 
 
 @sio.event
@@ -255,8 +246,7 @@ async def leave(sid: str, data: dict | None = None) -> None:
 async def config_update(sid: str, data: dict | None = None) -> None:
     code = requested_room(data)
     state = state_service.get_state_service()
-    emits: list[Emit] = []
-    async with state.lock(code):
+    async with room_turn(code) as emits:
         room = await state.get_room(code)
         if room is None:
             emits.append(error_emit(sid, "NOT_IN_ROOM", room_service.MSG_NOT_IN_ROOM))
@@ -267,16 +257,15 @@ async def config_update(sid: str, data: dict | None = None) -> None:
         else:
             patch = (data or {}).get("config")
             try:
-                emits = room_service.apply_config_update(
+                emits += room_service.apply_config_update(
                     room, patch if isinstance(patch, dict) else {}, state.next_seq
                 )
             except room_service.ConfigLocked:
-                emits = [error_emit(sid, "INVALID_CONFIG", MSG_CONFIG_LOCKED)]
+                emits.append(error_emit(sid, "INVALID_CONFIG", MSG_CONFIG_LOCKED))
             except ConfigError as exc:
-                emits = [error_emit(sid, "INVALID_CONFIG", exc.message, exc.field)]
+                emits.append(error_emit(sid, "INVALID_CONFIG", exc.message, exc.field))
             else:
                 await state.save_room(room["room_code"], room)
-    await room_service.send(emits)
 
 
 def _start_refusal(sid: str, code: str, message: str) -> Emit:
@@ -299,8 +288,7 @@ def _record_host_uid(room: dict, sid: str) -> None:
 async def start_game(sid: str, data: dict | None = None) -> None:
     code = requested_room(data)
     state = state_service.get_state_service()
-    emits: list[Emit] = []
-    async with state.lock(code):
+    async with room_turn(code) as emits:
         room = await state.get_room(code)
         if room is None:
             emits.append(_start_refusal(sid, code, room_service.STATUS_NOT_FOUND))
@@ -316,6 +304,5 @@ async def start_game(sid: str, data: dict | None = None) -> None:
                 )
             else:
                 _record_host_uid(room, sid)
-                emits = game_service.start(room, state.next_seq)
+                emits += game_service.start(room, state.next_seq)
                 await state.save_room(room["room_code"], room)
-    await room_service.send(emits)

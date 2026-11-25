@@ -2,7 +2,7 @@
 
 from app.core.enums import RoomState
 from app.services import play_service, room_service, state_service
-from app.services.room_service import Emit
+from app.services.room_turn import room_turn
 from app.sockets.errors import error_emit, guarded, requested_room
 from app.sockets.manager import sio
 
@@ -12,9 +12,8 @@ from app.sockets.manager import sio
 async def end_game_early(sid: str, data: dict | None = None) -> None:
     code = requested_room(data)
     state = state_service.get_state_service()
-    emits: list[Emit] = []
     ended = False
-    async with state.lock(code):
+    async with room_turn(code) as emits:
         room = await state.get_room(code)
         if room is None:
             emits.append(error_emit(sid, "NOT_IN_ROOM", room_service.MSG_NOT_IN_ROOM))
@@ -28,9 +27,8 @@ async def end_game_early(sid: str, data: dict | None = None) -> None:
             )
         else:
             code = room["room_code"]
-            emits = play_service.end_early(room, state.next_seq)
+            emits += play_service.end_early(room, state.next_seq)
             await state.save_room(code, room)
             ended = True
-    await room_service.send(emits)
     if ended:
         await play_service.finish(code)

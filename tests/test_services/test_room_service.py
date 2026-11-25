@@ -30,10 +30,9 @@ from app.services.room_service import (
     room_status,
     sanitise_display_name,
     seats_taken,
-    send,
 )
 from app.services.state_service import new_room_document
-from tests.conftest import FakeSocketManager, contains_key, contains_value
+from tests.conftest import contains_key, contains_value
 
 CODE = "ABC234"
 HOST_SID = "sid-host-0001"
@@ -531,7 +530,7 @@ def test_config_locked_is_an_exception_not_a_config_error() -> None:
     assert not issubclass(ConfigLocked, config_models.ConfigError)
 
 
-# --------------------------------------------------------------------- send
+# --------------------------------------------------------------------- Emit
 
 
 def test_emit_is_a_frozen_dataclass() -> None:
@@ -541,37 +540,6 @@ def test_emit_is_a_frozen_dataclass() -> None:
         emit.event = "y"  # type: ignore[misc]
 
 
-@pytest.mark.asyncio
-async def test_send_routes_sid_and_room_emits(
-    fake_socket_manager: FakeSocketManager,
-) -> None:
-    emits = [
-        Emit(HOST_SID, "config_updated", {"seq": 1, "config": {"a": 1}}),
-        Emit(
-            CODE,
-            "config_updated",
-            {"seq": 1, "config": {}},
-            skip_sid=HOST_SID,
-            to_room=True,
-        ),
-        Emit(CODE, "lobby_update", {"seq": 2}, to_room=True),
-    ]
-    await send(emits)
-    assert fake_socket_manager.records == [
-        (HOST_SID, "config_updated", {"seq": 1, "config": {"a": 1}}, None),
-        (CODE, "config_updated", {"seq": 1, "config": {}}, HOST_SID),
-        (CODE, "lobby_update", {"seq": 2}, None),
-    ]
-
-
-@pytest.mark.asyncio
-async def test_send_nothing_is_a_no_op(
-    fake_socket_manager: FakeSocketManager,
-) -> None:
-    await send([])
-    assert fake_socket_manager.records == []
-
-
 def test_module_exposes_the_documented_names() -> None:
-    for name in ("check_host_secret", "apply_config_update", "send", "Emit"):
+    for name in ("check_host_secret", "apply_config_update", "Emit"):
         assert hasattr(room_service, name)
