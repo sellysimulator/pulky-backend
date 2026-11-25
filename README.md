@@ -71,6 +71,7 @@ venv/bin/python -m app.tools.balance --seeds 1000 --players 4 [--strategy NAME .
 | `app/api/v1/` | Routers, auto-discovered: `health`, `rooms`, `config`, `games`, `users`. |
 | `app/services/state_backend.py`, `state_service.py` | The live-state store (in memory or Redis) and the room document on top of it: lock, schema guard, `seq`. |
 | `app/services/room_service.py`, `game_service.py`, `play_service.py` | Lobby and config rules; start, resync and the player and host payloads; submit, resolve, end early and finish. Every mutation runs under the room lock; emits and persistence happen after it. |
+| `app/services/room_turn.py` | A turn on a room: its lock, and its events sent after it in the order of their `seq`. |
 | `app/services/db_service.py`, `results_service.py`, `stats_service.py`, `user_service.py`, `claim_service.py`, `export_service.py` | End-of-game persistence (one idempotent transaction keyed by the game id), the stored results, profile stats, users, the guest-results claim, and the CSV/JSON export. |
 | `app/models/`, `app/db/`, `app/schemas/` | SQLAlchemy models, engine and sessions; the REST response models. |
 | `app/sockets/` | `manager.py` (the server, plus the Redis manager when Redis is on), `errors.py` (`@guarded`) and `handlers/` (`connection`, `lobby`, `play`, `host`), auto-discovered. |

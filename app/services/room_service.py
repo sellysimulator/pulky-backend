@@ -3,7 +3,7 @@
 import hmac
 import re
 import unicodedata
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -11,7 +11,6 @@ from app.core import config_models
 from app.core.enums import RoomState
 from app.core.limits import MAX_DISPLAY_NAME, MIN_PLAYERS_TO_START
 from app.core.records import alias_number
-from app.sockets import manager
 
 
 @dataclass(frozen=True)
@@ -261,14 +260,3 @@ def apply_config_update(
         )
     )
     return emits
-
-
-async def send(emits: Sequence[Emit]) -> None:
-    sockets = manager.get_socket_manager()
-    for emit in emits:
-        if emit.to_room:
-            await sockets.emit_to_room(
-                emit.target, emit.event, emit.data, skip_sid=emit.skip_sid
-            )
-        else:
-            await sockets.emit_to_sid(emit.target, emit.event, emit.data)

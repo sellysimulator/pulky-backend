@@ -17,6 +17,7 @@ from app.schemas.room import (
     RoomsSummaryRequest,
 )
 from app.services import room_service, state_service
+from app.services.room_turn import room_turn
 
 logger = logging.getLogger(__name__)
 
@@ -137,10 +138,10 @@ async def put_config(
     code: str, body: ConfigPatchRequest, x_host_secret: str | None = Header(None)
 ) -> Any:
     service = state_service.get_state_service()
-    async with service.lock(code):
+    async with room_turn(code) as emits:
         room = await _authorised_room(code, x_host_secret)
         try:
-            emits = room_service.apply_config_update(
+            emits += room_service.apply_config_update(
                 room, body.config, service.next_seq
             )
         except room_service.ConfigLocked as locked:
@@ -151,5 +152,4 @@ async def put_config(
                 content={"detail": error.message, "field": error.field},
             )
         await service.save_room(room["room_code"], room)
-    await room_service.send(emits)
     return {"config": room["config"]}

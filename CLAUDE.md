@@ -102,6 +102,13 @@ message at startup and every signed-in user is rejected.
   `require_engine`) and passes it to every payload builder (`player_state`, `host_state`,
   `play_service.resolution_emits`); a builder never loads it again (spec 13.2).
 - Handlers that can fail are wrapped in `@guarded()`; errors never carry exception text.
+- **Every game event goes out through `room_turn`** (`app/services/room_turn.py`, spec 13.3):
+  `async with room_turn(code) as emits:` holds the room's lock, queues the events before
+  releasing it and sends them after, in the order of their `seq`. Never emit an event with a
+  `seq` any other way, never send under the lock, and never make a turn wait for another's
+  sends: Socket.IO runs `disconnect` inside a send to a dead connection, and the room would
+  deadlock. A page enters and leaves the Socket.IO room inside the turn. The queue is in
+  process memory: one instance. `test_room_turn.py`, `test_event_order.py`.
 - `room_service.Emit` names a sid unless `to_room=True` says its target is a room code. A
   handler reads its room with `errors.requested_room` and refuses with `errors.error_emit`.
 - REST errors are `HTTPException` with a string `detail`; never return `str(e)`.

@@ -9,6 +9,7 @@ import socketio  # type: ignore[import-untyped]
 from app.api import deps
 from app.core import abuse
 from app.services import room_service, state_service
+from app.services.room_turn import room_turn
 from app.sockets import manager as sockets_manager
 from app.sockets.manager import sio
 
@@ -71,8 +72,7 @@ async def disconnect(sid: str) -> None:
         if not code:
             return
         state = state_service.get_state_service()
-        emits: list[room_service.Emit] = []
-        async with state.lock(code):
+        async with room_turn(code) as emits:
             room = await state.get_room(code)
             if room is None:
                 return
@@ -105,7 +105,6 @@ async def disconnect(sid: str) -> None:
                     )
                 )
                 await state.save_room(code, room)
-        await room_service.send(emits)
     finally:
         try:
             sockets.forget(sid)
